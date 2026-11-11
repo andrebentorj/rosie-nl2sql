@@ -57,19 +57,20 @@ shared token.
 
 - **Typed results.** Every tool declares an `outputSchema`, so `tools/list` tells a client
   exactly what `structuredContent` carries. For `ask_data` that includes the **Answer
-  Certificate** as a typed object (`verdict` enum `VERIFIED | QUALIFIED | UNVERIFIED |
-  CONTRADICTED`, `assertions[]` with `id`/`verdict`/`detail`) and a `status` field:
+  Certificate** as a typed object (`verdict` enum `CONTRADICTED | FLAGGED | CROSS_CHECKED |
+  NOT_CHECKED | CHECKS_PASSED | NOT_APPLICABLE`, `assertions[]` with `id`/`verdict`/`detail`,
+  `skipped[]` with the checks that could not run; see `docs/CERTIFICATE.md`) and a `status` field:
   `answered`, `clarification` (put `options` to the user and ask again) or `blocked`
   (a governance rule refused the question; `reason` says which class, never the rule).
   SDK clients validate the result against the schema automatically.
 - **Instructions.** The server publishes standing guidance that clients inject into the
   agent's context: ask in plain language, call `list_available_data` first when unsure,
-  how to treat each verdict (CONTRADICTED is "do not use this figure"), no memory between
+  how to treat each verdict (CONTRADICTED is "this total is inflated, do not present it as a fact"; nothing is ever "verified"), no memory between
   calls, handles expire in 15 minutes.
 - **Resources.** `rosie://catalog` (the catalog summary, `text/markdown`) and
   `rosie://project` (project card, `application/json`) can be pinned into context without
   a tool round-trip. Nothing else is a resource.
-- **Prompt.** `verified_answer(question)` asks through `ask_data` and relays the figure with
+- **Prompt.** `checked_answer(question)` asks through `ask_data` and relays the figure with
   its verdict honestly; a one-click demonstration of what the certificate is for.
 - **Argument validation.** Arguments are checked against each tool's `inputSchema` before
   any handler runs (the low-level SDK `Server` does not do this by itself); invalid

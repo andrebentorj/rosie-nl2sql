@@ -3,7 +3,12 @@
 [BIRD](https://bird-bench.github.io/) is the public text-to-SQL benchmark most products are
 compared on. Mini-Dev is its development subset: 500 questions over 11 databases, each with a
 reference query, scored by execution accuracy (the rows returned must equal the rows of the
-reference query). Nobody at Rosie wrote the questions, the databases or the reference
+reference query). This run uses the **2026 update** of Mini-Dev, published at
+[huggingface.co/datasets/birdsql/bird_mini_dev](https://huggingface.co/datasets/birdsql/bird_mini_dev)
+(file `data/mini_dev_postgresql.jsonl`, SHA-256 checked by `scripts/bird/setup-postgres.sh`).
+That update revised questions, evidence and reference SQL, and it is harder than the
+original release: its file labels 460 of the 500 questions "challenging", against 20% in the
+original. Nobody at Rosie wrote the questions, the databases or the reference
 answers, which is what `docs/BENCHMARK.md` cannot say about itself.
 
 ## Result
@@ -15,9 +20,10 @@ answers, which is what `docs/BENCHMARK.md` cannot say about itself.
 | **Execution accuracy** | **272 of 500 (54.4%)** |
 | Wrong answers | 214 |
 | Asked for clarification instead of answering (counted as wrong) | 14 |
-| The benchmark's published figure for the same model on PostgreSQL | 51.8% |
+| The dataset card's baseline for the same model on PostgreSQL | 51.8% |
 
-Rosie is 2.6 points above the published figure for the model it runs on. That is a small
+The 51.8% is the "Baseline results" table on the dataset card: `gpt-6-luna` with the
+benchmark's fixed prompt, 500 questions per dialect. Rosie is 2.6 points above it. That is a small
 margin from a single pass and the two setups are not identical (see Method), so read it as
 "in the same range", not as a lead. What the engine adds on this benchmark is modest: a
 schema summary in the prompt, tools to look up real values, and a retry when a query fails.
@@ -52,7 +58,7 @@ the feature.
 |---|---|
 | Wrong answers the certificate flagged | 10 of 214 (4.7%) |
 | Correct answers it flagged anyway | 7 of 272 (2.6%) |
-| Answers marked `VERIFIED` | 16 |
+| Answers marked `VERIFIED` (the name `CROSS_CHECKED` had until version 1.0.1) | 16 |
 | of which wrong by the benchmark's reference | 14 |
 
 On Rosie's own bank the certificate catches every trap; here it catches one wrong answer in
@@ -67,12 +73,19 @@ rounded when the reference is not. In 163 of the 214 wrong answers the result ev
 same number of rows as the reference. Nothing is structurally wrong with those queries, so
 no check fires.
 
-`VERIFIED` deserves the same plain statement. It means the total was re-derived by a second
+`VERIFIED` deserves the same plain statement. It meant the number was re-derived by a second
 route over the same tables and filters and came out equal: the join did not distort it. It
-does not mean the question was understood. Fourteen answers here were structurally sound
-and answered a different question from the one asked. The widget's wording ("re-derived
-independently and got the same value") is accurate, and a reader who takes it as "this is
-the right answer" is taking more than it gives.
+never meant the question was understood. Fourteen answers here were structurally sound and
+answered a different question from the one asked.
+
+This result changed the product. In version 1.0.1 the verdict is called `CROSS_CHECKED`, its
+text says "this checks the calculation, not whether the question was understood", and a
+`COUNT` is no longer given that badge at all: 15 of the 16 answers above were counts, where
+counting joined rows and counting distinct records are both defensible and the engine cannot
+know which was meant. Under the current rules those 15 would read "checks passed", and the
+one `AVG` would still be cross-checked and still be wrong, because it averaged the right way
+over the wrong reading of the question. The table above is left as measured, with the rules
+of the day. See `docs/CERTIFICATE.md`.
 
 So, what this benchmark says about Rosie:
 

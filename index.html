@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Rosie: ask your database, and know when the answer is wrong</title>
-<meta name="description" content="Self-hosted text-to-SQL for MySQL, PostgreSQL and SQL Server. Every answer is checked after it runs, and the evidence is shown next to the number.">
+<title>Rosie: ask your database, see what was checked</title>
+<meta name="description" content="Self-hosted text-to-SQL for MySQL, PostgreSQL and SQL Server. Answers are checked after they run for the errors that raise no error, and what was and was not checked is shown next to the number.">
 <link rel="icon" href="assets/rosie.svg" type="image/svg+xml">
 <style>
 :root {
@@ -96,9 +96,10 @@ footer { border-top: 1px solid var(--line); padding: 28px 0 44px; color: var(--m
 
 <div class="hero">
     <div>
-        <h1>Ask your database. Know when the answer is wrong.</h1>
+        <h1>Ask your database. See what was checked.</h1>
         <p class="lede">Rosie turns plain-language questions into SQL, runs them read-only on your own
-        servers, and then checks every answer. What it found is shown next to the number.</p>
+        servers, and then checks the answer for the errors that raise no error. What was checked, what it
+        found and what it could not check are shown next to the number.</p>
         <a class="btn primary" href="#pilot">Start a pilot</a>
         <a class="btn" href="#numbers">See the numbers</a>
     </div>
@@ -139,32 +140,34 @@ footer { border-top: 1px solid var(--line); padding: 28px 0 44px; color: var(--m
         <div class="card"><h3>Periods the data does not cover</h3><p>"This year" when the last record is from June is half a year. The answer says so.</p></div>
         <div class="card"><h3>Filters that remove nothing</h3><p>A condition every row satisfies is usually not the condition that was meant.</p></div>
         <div class="card"><h3>Metrics with one definition</h3><p>Declare "revenue" once, or import it from dbt or Cube. Answers that compute it differently are flagged.</p></div>
-        <div class="card"><h3>What it does not do</h3><p>It checks the structure of an answer, not whether the question was understood. Misread questions are reduced by good context, and we publish how often they still happen.</p></div>
+        <div class="card"><h3>What it does not do</h3><p>It checks the structure of the calculation, not whether the question was understood. A misread question passes every check. When a check cannot run, the answer says "not checked" and why.</p></div>
     </div>
 </section>
 
 <section id="numbers">
     <div class="kicker">Measured</div>
     <h2>Numbers you can reproduce.</h2>
-    <p class="sub">194 questions over a public sample database, the same bank on each engine, one
-    pass, including 34 questions built to produce a wrong answer that looks right.</p>
+    <p class="sub">Our own regression suite: 194 questions over a public sample database, the same
+    bank on each engine, one pass. "Passed" means the answer met the suite's weighted criteria, not
+    exact-match accuracy. 34 of the questions are traps built from the error classes the
+    certificate covers.</p>
     <div class="tablewrap">
     <table>
         <thead><tr><th></th><th>MySQL 8.4</th><th>PostgreSQL 16</th><th>SQL Server 2022</th></tr></thead>
         <tbody>
-            <tr><td>Answered correctly</td><td>191 of 194</td><td>187 of 194</td><td>192 of 194</td></tr>
+            <tr><td>Questions passed</td><td>191 of 194</td><td>187 of 194</td><td>192 of 194</td></tr>
             <tr><td>Requests that must be refused, refused</td><td>20 of 20</td><td>19 of 20</td><td>20 of 20</td></tr>
             <tr><td>Trap questions</td><td>34</td><td>34</td><td>34</td></tr>
-            <tr><td>Wrong answer that went out looking fine</td><td><strong>0</strong></td><td><strong>0</strong></td><td><strong>0</strong></td></tr>
+            <tr><td>Trap answers that went out with no warning</td><td>0</td><td>0</td><td>0</td></tr>
             <tr><td>Model cost of the whole run</td><td>US$ 0.12</td><td>US$ 0.14</td><td>US$ 0.13</td></tr>
         </tbody>
     </table>
     </div>
-    <p class="note">We wrote that question bank, so we also ran one we did not write. On BIRD Mini-Dev
-    (500 public questions, 11 databases, no tuning) Rosie scores 54.4% execution accuracy against
-    51.8% published for the same model. On that benchmark most errors are misread questions, which
-    the certificate does not catch: it flagged 1 wrong answer in 20. Both results, the misses and
-    the commands to rerun them are in the documentation.</p>
+    <p class="note">We wrote that suite, so we also ran one we did not write. On BIRD Mini-Dev (2026
+    update: 500 public questions, 11 databases, no tuning) Rosie scores 54.4% execution accuracy,
+    against the 51.8% baseline the dataset lists for the same model. On that benchmark almost all
+    errors are misread questions, which the certificate does not catch: it flagged 10 of 214 wrong
+    answers. Both results, the misses and the commands to rerun them are in the documentation.</p>
 </section>
 
 <section>

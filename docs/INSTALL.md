@@ -128,7 +128,7 @@ intentional (fail-closed).
 
 ---
 
-## Step 2 — Create the read-only MySQL user (DO NOT SKIP)
+## Step 2. Create the read-only database user (DO NOT SKIP)
 
 Rosie runs **every** AI query through a dedicated pool that must have **SELECT only**. At
 startup a permission probe (`security/db-permission-check.js`) checks this: if the user has

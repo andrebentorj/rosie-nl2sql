@@ -4,15 +4,18 @@
 
 <h1 align="center">Rosie</h1>
 
-<p align="center"><b>Ask your database questions in plain language, and know when the answer is wrong.</b></p>
+<p align="center"><b>Ask your database in plain language. See what was checked, and what was not.</b></p>
 
 Rosie is a self-hosted text-to-SQL engine for MySQL, MariaDB, PostgreSQL and SQL Server. You point it at
 a database, it learns the schema, and people (through an embeddable chat widget) or AI agents
 (through MCP) ask questions in plain language. Rosie writes the SQL, checks it, runs it
 read-only and answers.
 
-What sets it apart is what happens after the SQL runs. Every answer goes through a set of
-deterministic checks, and the result is shown next to the number: the **Answer Certificate**.
+What sets it apart is what happens after the SQL runs. The answer goes through a set of
+deterministic checks for the ways a query can be wrong without any error, and the outcome is
+shown next to the number: the **Answer Certificate**. When a check could not run, Rosie says
+that too. The checks look at the structure of the calculation, not at whether the question
+was understood; [docs/CERTIFICATE.md](docs/CERTIFICATE.md) says exactly what is covered.
 
 Two real answers from the demo database. On the left, the number was re-derived by a second
 route and matched. On the right, the question asks for a period that runs six months past
@@ -23,7 +26,7 @@ the last record, and Rosie says so instead of handing over a total that looks co
 | ![An answer with the note "Cross-checked: re-derived independently and got the same value"](docs/assets/widget-verified.png) | ![An answer with the warning that the requested period is not fully covered by the data](docs/assets/widget-flagged.png) |
 
 A query that runs and returns a plausible number is the failure that hurts, because nobody
-looks twice. Rosie looks twice. On the demo data, a join that repeats each invoice once per
+looks twice. On the demo data, a join that repeats each invoice once per
 line turns a revenue of 2,328.60 into 20,848.62 without any error; the certificate reports
 both figures and marks the answer `CONTRADICTED`.
 
@@ -31,7 +34,7 @@ both figures and marks the answer `CONTRADICTED`.
 
 | | |
 |---|---|
-| **Answer Certificate** | After every answer: detects joins that inflate totals, filters on values that do not exist, periods the data only partly covers, filters that remove nothing, and queries that ignore a declared metric definition. For totals over joins it re-derives the number by a second route and reports `VERIFIED` or `CONTRADICTED`. |
+| **Answer Certificate** | After the SQL runs: detects joins that inflate totals, filters on values that do not exist, periods the data only partly covers, filters that remove nothing, and queries that ignore a declared metric definition. For totals over joins it re-derives the number by a second route and reports `CROSS_CHECKED` or `CONTRADICTED`. Every answer carries an explicit verdict, including `NOT_CHECKED` with the reason. |
 | **Read-only by construction** | SQL is parsed and validated before it runs: SELECT only, tables and columns from an allowlist, no system functions. The database user is checked at startup and Rosie refuses to answer if it can do more than SELECT. |
 | **Personal data stays put** | Masked columns are never read, never returned and never sent to the model provider. |
 | **Per-tenant isolation** | Row policies filter every query by the caller's verified identity (JWT). The filter is applied by the engine, not by the model, and cannot be talked around. |
@@ -41,22 +44,26 @@ both figures and marks the answer `CONTRADICTED`.
 
 ## Measured, on public data
 
-194 questions over the public Chinook sample database, the same bank on every engine,
-`gpt-6-luna`, one pass. Full method, limits and how to reproduce: [docs/BENCHMARK.md](docs/BENCHMARK.md).
+Our own regression suite: 194 questions over the public Chinook sample database, the same
+bank on every engine, `gpt-6-luna`, one pass. "Passed" means the answer met the suite's
+weighted criteria (structure, result size, and the exact value where the question has one);
+it is not exact-match accuracy, and we wrote the questions. Method, limits and how to
+reproduce: [docs/BENCHMARK.md](docs/BENCHMARK.md).
 
 | | MySQL 8.4 | PostgreSQL 16 | SQL Server 2022 |
 |---|---|---|---|
-| Questions answered correctly | 191 of 194 (98.5%) | 187 of 194 (96.4%) | 192 of 194 (99.0%) |
+| Questions passed | 191 of 194 (98.5%) | 187 of 194 (96.4%) | 192 of 194 (99.0%) |
 | Must-refuse questions refused (writes, masked data, injection) | 20 of 20 | 19 of 20 | 20 of 20 |
-| Trap questions built to produce a silent wrong answer | 34 | 34 | 34 |
-| of which: wrong answer went out looking fine | **0** | **0** | **0** |
+| Trap questions, built from the error classes the certificate covers | 34 | 34 | 34 |
+| of which: wrong answer went out with no warning | 0 | 0 | 0 |
 | Correct answers flagged anyway (false alarms) | 4 of 82 | 4 of 79 | 5 of 79 |
 | Cost of the whole run | US$ 0.12 | US$ 0.14 | US$ 0.13 |
 
 **On a benchmark we did not write.** On [BIRD Mini-Dev](docs/BIRD.md) (500 public questions,
 11 databases, context built from the schema alone) Rosie scores 54.4% execution accuracy on
-PostgreSQL, against 51.8% published for the same model. That page also shows what the
-certificate does not do: it catches structural errors, not misread questions.
+PostgreSQL, against the 51.8% baseline the dataset card lists for the same model. There the
+certificate flagged 10 of 214 wrong answers: almost all of them were misread questions, which
+it does not catch.
 
 The benchmark page also lists what went wrong, including a hole in the injection filter that
 this benchmark found and that is now fixed. The numbers come from one schema and one model;
@@ -134,6 +141,7 @@ directory. The contract is in [contexts/example/README.md](docs/CONTEXT_DIRECTOR
 |---|---|
 | Install it | [docs/INSTALL.md](docs/INSTALL.md) |
 | See how accurate it is, and reproduce the numbers | [docs/BENCHMARK.md](docs/BENCHMARK.md) |
+| Know exactly what the Answer Certificate checks | [docs/CERTIFICATE.md](docs/CERTIFICATE.md) |
 | See the result on the public BIRD benchmark | [docs/BIRD.md](docs/BIRD.md) |
 | Run it on PostgreSQL | [docs/POSTGRES.md](docs/POSTGRES.md) |
 | Run it on SQL Server | [docs/SQLSERVER.md](docs/SQLSERVER.md) |
@@ -177,7 +185,7 @@ does not document. The ones worth knowing first:
 | `DB_DATABASE` / `DB_RO_USER` | (required) | The database to query, and the SELECT-only user that queries it |
 | `ROSIE_API_TOKEN` | (generated by `npm run init`) | The token callers present |
 | `AI_ASSISTANT_ENABLED` | `true` | Emergency stop: `false` makes every endpoint return 404 |
-| `AI_CROSS_CHECK` | `false` | Turns on the independent re-derivation (`VERIFIED` / `CONTRADICTED`) |
+| `AI_CROSS_CHECK` | `true` | `false` turns off the second derivation (`CROSS_CHECKED` / `CONTRADICTED`) |
 | `ROSIE_AUDIT_POLICY` | `fail-open` | `fail-closed` refuses to answer while no audit sink can record |
 
 **Things to know before production.**

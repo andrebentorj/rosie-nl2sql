@@ -112,8 +112,8 @@ not exist and lists the ones that do.
 
 > What is the total credit limit of customers, counting every order?
 
-The join repeats each customer once per order, so the naive sum is inflated many times over. With the cross-check enabled (below), Rosie refuses to let the figure stand
-and reports both derivations.
+The join repeats each customer once per order, so the naive sum is inflated many times over. Rosie marks the total as
+contradicted and reports both derivations.
 
 **5. Follow-ups on any answer:**
 
@@ -123,18 +123,15 @@ and reports both derivations.
 These use `explain_answer` and `export_answer`, which authorize with the signed handle from
 the original answer rather than re-running anything the client asks for.
 
-## Enabling the independent double derivation
+## The second derivation
 
-The cross-check that produces the `VERIFIED` and `CONTRADICTED` verdicts is off by default,
-because it spends one extra read-only query on qualifying answers. To see item 4 above in
-its strongest form, add to `.env`:
+The cross-check behind the `CROSS_CHECKED` and `CONTRADICTED` verdicts is on by default and
+spends one extra read-only query on the answers it applies to. `AI_CROSS_CHECK=false` in
+`.env` turns it off. What each verdict means, and what the certificate does not check, is in
+`docs/CERTIFICATE.md`.
 
-```
-AI_CROSS_CHECK=true
-```
-
-and restart Claude Desktop. It needs the `cross_check` column in the certificate table; if
-the engine reports the column missing, apply it:
+An installation created before the cross-check existed lacks one column in the certificate
+table; if the engine reports it missing, add it:
 
 ```sql
 ALTER TABLE rosie_answer_certificate ADD COLUMN cross_check TEXT NULL AFTER provenance;

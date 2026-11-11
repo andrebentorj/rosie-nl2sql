@@ -46,9 +46,10 @@ Response `200`:
   "clarification": null,
   "sql": "SELECT COUNT(*) AS n FROM `orders` WHERE `status` = 'paid' LIMIT 501",
   "certificate": {
-    "verdict": "QUALIFIED",
+    "verdict": "CHECKS_PASSED",
     "assertions": [ { "id": "coverage", "verdict": "pass", "detail": "Filter kept 412 of 630 rows (65.4%)." } ],
     "crossCheck": null,
+    "skipped": [],
     "provenance": { "projectId": "sales", "model": "gpt-6-luna", "engineVersion": "1.0.0", "catalogVersion": "…", "generatedAt": "…" }
   },
   "answerHandle": "base64url.payload.signature",
@@ -63,10 +64,13 @@ Response `200`:
 
 - `clarification`, when present, is `{ "question": "...", "options": ["...", "..."] }` and
   `sql`/`rows` are null: render the options as chips and ask again with the refined question.
-- `certificate.verdict`: `QUALIFIED` (all structural checks passed), `UNVERIFIED` (a check
-  warned or failed; see `assertions[].detail`), `VERIFIED` / `CONTRADICTED` (only with
-  `AI_CROSS_CHECK=true`: an independent re-derivation agreed or disagreed). `null` when no
-  check applied.
+- `certificate.verdict` is one of `CONTRADICTED`, `FLAGGED`, `CROSS_CHECKED`, `NOT_CHECKED`,
+  `CHECKS_PASSED`, `NOT_APPLICABLE`. Every answer that ran SQL has a certificate; it is
+  `null` only on a clarification or a refusal. `skipped` lists the checks that were due and
+  could not run, each with a `reason` and a sentence in `detail`. The certificate checks the
+  structure of the calculation, not whether the question was understood: never show
+  `CROSS_CHECKED` or `CHECKS_PASSED` as "verified" or "correct". Full reference:
+  `docs/CERTIFICATE.md`.
 - `answerHandle` is the signed ticket for the follow-up routes below; it expires after 15
   minutes and is bound to the caller identity and the project.
 - A refused question (write intent, sensitive request, injection, too long) still returns

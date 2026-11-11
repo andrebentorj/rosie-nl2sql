@@ -2,6 +2,10 @@
 
 What Rosie gets right, what it gets wrong, and how to check the numbers yourself.
 
+This is our own regression suite. We wrote the questions, and "passed" is a weighted
+criterion, not exact-match accuracy (see How scoring works). For questions and reference
+answers written by someone else, read `docs/BIRD.md` next to this page.
+
 Everything here runs on public data: the [Chinook](https://github.com/lerocha/chinook-database)
 sample database (a digital media store, 11 tables, 412 invoices from 2021 to 2025) and the
 question bank in `contexts/demo/eval/questions/`. Setup is in `demo/README.md`.
@@ -13,7 +17,7 @@ Same data, same context directory, same 194 questions.
 
 | Measure | MySQL 8.4 | PostgreSQL 16 | SQL Server 2022 |
 |---|---|---|---|
-| Questions answered correctly | 191 of 194 (98.5%) | 187 of 194 (96.4%) | 192 of 194 (99.0%) |
+| Questions passed | 191 of 194 (98.5%) | 187 of 194 (96.4%) | 192 of 194 (99.0%) |
 | Cost of the whole run | US$ 0.12 | US$ 0.14 | US$ 0.13 |
 
 | Category | MySQL | PostgreSQL | SQL Server |
@@ -71,6 +75,21 @@ only partly covers, a filter that removes nothing. Each question can end three w
 | A wrong or partial answer was produced and the Answer Certificate flagged it | 13 | 14 | 13 |
 | A wrong answer went out looking fine | 0 | 0 | 0 |
 
+The tables above were measured with the verdict names and rules of version 1.0.0. Since
+1.0.1 a `COUNT` over a join is reported as a note with both counts instead of a
+contradiction, and answers no check could cover say so (`docs/CERTIFICATE.md`).
+
+**Re-run on MySQL with version 1.0.1 (2026-11-11, one pass):** 190 of 194 passed. Of the 34
+traps, the model avoided 20, the certificate flagged 14, and none went out without a warning.
+Of the 81 clean answers where there was something to check, 5 were flagged anyway and 10
+were marked `NOT_CHECKED`, all for the same reason: a total over a join in a form the fan-out
+check does not cover yet. Those 10 are the measured size of that gap. The four misses were
+three clarifications (two not expected by the bank, one expected and not asked) and one
+wrong number: "sales billed to the States" was not read as the USA. Nothing was structurally
+wrong with that query, so its certificate read `NOT_APPLICABLE`, which is the honest
+description of what the checks can say about a misread question. PostgreSQL and SQL Server
+have not been re-run on 1.0.1.
+
 Correct answers that carried a certificate and were flagged anyway: 4 of 82 on MySQL, 4 of 79
 on PostgreSQL, 5 of 79 on SQL Server (5 to 6%). All are accurate statements about a filter the model added that removes
 no rows; they are counted as false alarms because the answer itself was right. The demo
@@ -78,6 +97,21 @@ context declares five structured metrics (`docs/METRICS.md`); the metric check t
 raised no false alarm on any engine.
 
 ## How scoring works
+
+A question passes with 80% of its points. What the points check depends on the question:
+
+| Kind of question | How many | What "passed" verifies |
+|---|---|---|
+| Answerable, with a value reference (`value_truth`) | 37 | The number in the answer equals the number a reference query returns. A wrong number fails whatever else is right |
+| Answerable, with a size reference (`sql_truth`) | 98 (some also in the row above) | Tables used, filter patterns, and a row count within 5% of the reference query's. **The values in the rows are not compared**: a list of the right length with wrong values passes |
+| Answerable, with neither | 2 | Tables, filters and a static row range |
+| Must ask (ambiguity) | 12 | A clarification was asked, or the assumption was stated |
+| Must refuse | 20 | No data came back |
+| Traps (poisoned) | 34 | See Silent wrong answers |
+
+So the pass rate above is an upper bound on exact correctness for the 128 answerable
+questions, and a tight one only for the 37 with a value reference. Comparing complete results
+for every question is planned; until then, do not read "98%" as "98% of answers are exact".
 
 - **Structure.** Expected tables, filter patterns and result size. The expected size is not a
   stored number: `sql_truth` is a query run against the same database at evaluation time, so the
@@ -100,6 +134,12 @@ the engine could not.
   descriptions in its context, will score lower until its context is tuned.
 - **The bank was written by the team that builds the engine.** It was calibrated once against
   a first run (ambiguous wordings were rewritten and two misclassified questions were moved).
+  The 34 traps are built from exactly the error classes the certificate has checks for, and
+  the demo context helps the model avoid some of them before any check runs: its prompt says
+  not to sum `Invoice.Total` after joining `InvoiceLine`, and its project file states where
+  the data ends. In about 21 of the 34 the model avoids the trap, so the certificate is
+  exercised on 13 or 14 questions per engine. "0 went out without a warning" is a true
+  statement about those, and a small sample.
   Treat it as a regression suite you can inspect and extend, not as an independent audit.
   For questions and reference answers written by someone else, see `docs/BIRD.md`: 54.4% on
   BIRD Mini-Dev, where the certificate flags only 1 wrong answer in 20 because those errors
