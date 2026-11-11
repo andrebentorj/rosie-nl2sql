@@ -100,8 +100,8 @@ and the default is shown. Set your own `welcomeMessage` as well if it mentions t
 
 ### `verified-queries.json` (optional)
 Known-correct question→SQL pairs. For each user question, the engine retrieves the most
-similar pairs (lexical similarity) and injects them as few-shot examples. They are prompt
-examples only — never executed directly — so they cannot bypass the SQL validator.
+similar pairs (lexical similarity) and injects them as few-shot examples. Plain entries are
+prompt examples only and are never executed, so they cannot bypass the SQL validator.
 
 ```json
 [
@@ -112,6 +112,11 @@ examples only — never executed directly — so they cannot bypass the SQL vali
     }
 ]
 ```
+
+An entry that names who approved it (`approvedBy`, with an `id` and optionally `params`,
+`approvedOn`, `reviewBy`) becomes an **approved query**: the model may run it by id with
+different parameter values, never a different statement, and the answer says a person
+reviewed it. See `docs/APPROVED_QUERIES.md`.
 
 ### Semantic fields in `schema-catalog.json` (all optional)
 A compact summary of the catalog (tables, relationships, metrics) is injected into the

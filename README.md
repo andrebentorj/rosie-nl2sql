@@ -38,6 +38,7 @@ both figures and marks the answer `CONTRADICTED`.
 | **Read-only by construction** | SQL is parsed and validated before it runs: SELECT only, tables and columns from an allowlist, no system functions. The database user is checked at startup and Rosie refuses to answer if it can do more than SELECT. |
 | **Personal data stays put** | Masked columns are never read, never returned and never sent to the model provider. |
 | **Per-tenant isolation** | Row policies filter every query by the caller's verified identity (JWT). The filter is applied by the engine, not by the model, and cannot be talked around. |
+| **Approved queries** | A query a person reviewed for a question is run unchanged when the question comes back, with only the values swapped, and the answer says who approved it. The checks cover the calculation; this covers the meaning. |
 | **Metrics with one definition** | Declare "revenue" once, or import it from dbt or Cube. Answers that compute it differently are flagged. |
 | **Two ways in** | A chat widget (one script tag, white-label) and an MCP server for Claude, Cursor and other AI clients. |
 | **Runs where your data is** | Your server, your database, your model key. Works with any OpenAI-compatible endpoint, including a model you host. |
@@ -63,7 +64,8 @@ reproduce: [docs/BENCHMARK.md](docs/BENCHMARK.md).
 11 databases, context built from the schema alone) Rosie scores 54.4% execution accuracy on
 PostgreSQL, against the 51.8% baseline the dataset card lists for the same model. There the
 certificate flagged 10 of 214 wrong answers: almost all of them were misread questions, which
-it does not catch.
+it does not catch. Accuracy follows the model: on a 110-question sample of the same benchmark,
+`gpt-6-luna` gets 71% and `gpt-6.1-terra` 86% ([docs/MODELS.md](docs/MODELS.md)).
 
 The benchmark page also lists what went wrong, including a hole in the injection filter that
 this benchmark found and that is now fixed. The numbers come from one schema and one model;
@@ -141,6 +143,7 @@ directory. The contract is in [contexts/example/README.md](docs/CONTEXT_DIRECTOR
 |---|---|
 | Install it | [docs/INSTALL.md](docs/INSTALL.md) |
 | See how accurate it is, and reproduce the numbers | [docs/BENCHMARK.md](docs/BENCHMARK.md) |
+| Choose a model, and see how much accuracy it buys | [docs/MODELS.md](docs/MODELS.md) |
 | Know exactly what the Answer Certificate checks | [docs/CERTIFICATE.md](docs/CERTIFICATE.md) |
 | See the result on the public BIRD benchmark | [docs/BIRD.md](docs/BIRD.md) |
 | Run it on PostgreSQL | [docs/POSTGRES.md](docs/POSTGRES.md) |
@@ -149,6 +152,7 @@ directory. The contract is in [contexts/example/README.md](docs/CONTEXT_DIRECTOR
 | Authenticate users with their own tokens | [docs/IDENTITY.md](docs/IDENTITY.md) |
 | Isolate tenants or teams | [docs/ROW_POLICIES.md](docs/ROW_POLICIES.md) |
 | Declare metrics, or import them from dbt or Cube | [docs/METRICS.md](docs/METRICS.md) |
+| Have a person approve the query behind a recurring question | [docs/APPROVED_QUERIES.md](docs/APPROVED_QUERIES.md) |
 | Know what leaves my network, and use my own model | [docs/DATA_PRIVACY.md](docs/DATA_PRIVACY.md) |
 | Call the HTTP API | [docs/API.md](docs/API.md) |
 | Write or edit a context directory by hand | [contexts/example/README.md](docs/CONTEXT_DIRECTORY.md) |

@@ -90,6 +90,21 @@ wrong with that query, so its certificate read `NOT_APPLICABLE`, which is the ho
 description of what the checks can say about a misread question. PostgreSQL and SQL Server
 have not been re-run on 1.0.1.
 
+**The second attempt, measured (MySQL, 2026-11-11, one pass):** with the certificate-guided
+second attempt on (`docs/CERTIFICATE.md`), 189 of 194 passed, which is the same as without
+it within run-to-run variation. Among the 34 traps the checks named an actionable defect in
+two answers, an invoice total repeated by a join and a filter on a playlist name that does
+not exist; both went back to the model with the evidence and both came out with the value
+the truth query gives. The other twelve flagged trap answers were period and coverage
+warnings, which describe the data and are not retried. No correct answer was changed by a
+retry. Two corrections is a small number: it shows the mechanism works where it applies and
+says little about how often it will apply on another schema.
+
+Version 1.1.0 extends the fan-out check to the forms behind those ten `NOT_CHECKED` answers
+(a total over an expression such as `SUM(UnitPrice * Quantity)`, a wrapped total, a table
+that is not first in `FROM`). The suite has not been re-run since, so the count above is the
+last measured one, not the current one.
+
 Correct answers that carried a certificate and were flagged anyway: 4 of 82 on MySQL, 4 of 79
 on PostgreSQL, 5 of 79 on SQL Server (5 to 6%). All are accurate statements about a filter the model added that removes
 no rows; they are counted as false alarms because the answer itself was right. The demo

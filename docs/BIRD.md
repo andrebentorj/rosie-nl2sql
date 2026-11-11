@@ -143,6 +143,12 @@ node -r dotenv/config test/bird/run.js --limit 5       # first 5 questions of ea
 The report is written to `test/bird/results/` with every question's SQL, outcome and
 certificate verdict.
 
+## Other models
+
+The run above uses the cheapest model on the list. On a 110-question sample of the same
+benchmark, with version 1.1.0, `gpt-6.1-terra` scores 86.4% where `gpt-6-luna` scores 70.9%
+(`docs/MODELS.md`). The full 500 questions have only been run with `gpt-6-luna`.
+
 ## Not done
 
 - MySQL and SQL Server. The benchmark publishes a MySQL version; the runner is written for

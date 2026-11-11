@@ -71,6 +71,11 @@ Response `200`:
   structure of the calculation, not whether the question was understood: never show
   `CROSS_CHECKED` or `CHECKS_PASSED` as "verified" or "correct". Full reference:
   `docs/CERTIFICATE.md`.
+- `approval` (not shown above) is `null` unless the answer ran an approved query; then it
+  carries `id`, `question`, `approvedBy`, `approvedOn`, `reviewBy` and the `params` used
+  (`docs/APPROVED_QUERIES.md`).
+- `certificate.repair`, when present, records that the checks flagged a first query and the
+  model was asked once to correct it (`docs/CERTIFICATE.md`).
 - `answerHandle` is the signed ticket for the follow-up routes below; it expires after 15
   minutes and is bound to the caller identity and the project.
 - A refused question (write intent, sensitive request, injection, too long) still returns
