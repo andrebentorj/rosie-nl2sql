@@ -21,6 +21,34 @@ trail.
 | `explain_answer` | Describes, in words, what the query behind a previous answer did. Takes that answer's handle. |
 | `export_answer` | Re-runs a previous answer's query past the display cap to fetch more rows. Takes the handle, re-validates the SQL, and caps the result (default 1000, max 5000). |
 | `list_available_data` | Catalog summary: tables, what they are about, relationships, declared metrics. Descriptions and synonyms only, never raw DDL. |
+| `list_metrics` | The declared metrics: name, formula, base table, required filters. With a metric name, every column that metric can be broken down or filtered by. |
+| `query_metric` | A declared metric by name, with breakdowns (`Table.Column`, with `:year`, `:quarter` or `:month` on dates), filters, order and limit. The engine writes the SQL from the definition. Same result shape as `ask_data`. |
+| `list_approved_queries` | The queries a person reviewed: id, the question each answers, parameters and types, who approved it and when. |
+| `run_approved_query` | One approved query by id, with values for its declared parameters. The statement is fixed. Same result shape as `ask_data`, naming the reviewer. |
+
+### Governed requests: a number by name
+
+`ask_data` puts a language model between the request and the SQL. That is what makes plain
+language work, and it is also where a question can be misread. When an agent already knows
+which figure it wants, it can ask for it by name instead:
+
+```json
+{ "name": "query_metric",
+  "arguments": { "metric": "revenue", "group_by": [ "Invoice.BillingCountry", "Invoice.InvoiceDate:year" ],
+                 "filters": [ { "column": "Invoice.InvoiceDate", "op": "between", "value": [ "2025-01-01", "2025-12-31" ] } ],
+                 "order": "metric_desc", "limit": 10 } }
+```
+
+No model interprets that call, so it means the same thing every time. The formula, the
+required filters and the joins come from the metric's definition ([METRICS.md](METRICS.md));
+a breakdown that would repeat rows is refused with the reason before anything runs. The
+answer carries `metric` (or `approval` for an approved query) and a certificate whose
+`provenance.model` is `null`.
+
+This is still Profile A. The agent has no SQL channel: it names a metric and catalog columns,
+or an id and typed values, and the engine writes or binds the statement. That statement then
+passes the validator, the row cap, the caller's row policy, the certificate and the audit
+trail like any other. Masked columns cannot be used as a breakdown or a filter.
 
 `explain_answer` and `export_answer` authorize with the **signed handle**, never with a
 message id: the handle carries the validated SQL, its owner and a 15-minute expiry, and is
@@ -67,9 +95,10 @@ shared token.
   agent's context: ask in plain language, call `list_available_data` first when unsure,
   how to treat each verdict (CONTRADICTED is "this total is inflated, do not present it as a fact"; nothing is ever "verified"), no memory between
   calls, handles expire in 15 minutes.
-- **Resources.** `rosie://catalog` (the catalog summary, `text/markdown`) and
-  `rosie://project` (project card, `application/json`) can be pinned into context without
-  a tool round-trip. Nothing else is a resource.
+- **Resources.** `rosie://catalog` (the catalog summary, `text/markdown`),
+  `rosie://project` (project card, `application/json`) and `rosie://certificate` (what each
+  certificate verdict establishes, what it does not, and how to relay it to a person) can be
+  pinned into context without a tool round-trip. Nothing else is a resource.
 - **Prompt.** `checked_answer(question)` asks through `ask_data` and relays the figure with
   its verdict honestly; a one-click demonstration of what the certificate is for.
 - **Argument validation.** Arguments are checked against each tool's `inputSchema` before
@@ -135,10 +164,11 @@ while no audit sink can record them.
 (default 15 min) in this process too, because a desktop client keeps it alive for days and a
 one-shot check would make a later `GRANT` invisible until restart.
 
-**Quotas and concurrency.** `ask_data`, `explain_answer` and `export_answer` pass through the
+**Quotas and concurrency.** `ask_data`, `explain_answer`, `export_answer`, `query_metric` and
+`run_approved_query` pass through the
 same hourly/daily quotas and in-flight cap as the HTTP route (`AI_MAX_QUERIES_PER_HOUR`,
 `AI_MAX_QUERIES_PER_DAY`, `AI_CONCURRENCY_LIMIT`), keyed by the caller identity. A refused
-call is an `isError` result that says why in plain words. `list_available_data` and the
+call is an `isError` result that says why in plain words. The listing tools and the
 resources are free. State is per process; replicas share nothing yet.
 
 **Cancellation.** A client that cancels (`notifications/cancelled`) or closes the pipe aborts

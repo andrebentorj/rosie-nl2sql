@@ -79,8 +79,9 @@ reads the configuration at startup.
 
 ## Step 5 — Check that Rosie is connected
 
-Open the tools or connectors list in Claude Desktop. You should see **rosie** with four
-tools: `ask_data`, `explain_answer`, `export_answer` and `list_available_data`.
+Open the tools or connectors list in Claude Desktop. You should see **rosie** with eight
+tools: `ask_data`, `explain_answer`, `export_answer`, `list_available_data`, `list_metrics`,
+`query_metric`, `list_approved_queries` and `run_approved_query`.
 
 ---
 
