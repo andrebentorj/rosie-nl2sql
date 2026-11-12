@@ -161,6 +161,40 @@ Thumbs up or down on an answer. Always accepted (`202`), even when the handle ha
 Response: `{ "ok": true }`. Stored in `rosie_feedback` with the question and SQL snapshot
 taken from the handle when it still verifies.
 
+## POST /certify (off by default)
+
+Runs a `SELECT` that the caller wrote and returns its result with an Answer Certificate. No
+model is involved: this is the certificate as a service for SQL that came from somewhere
+else, another assistant, a BI tool, a person.
+
+```bash
+curl -s https://<host>/api/assistant/certify -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{ "sql": "SELECT SUM(i.Total) FROM Invoice i JOIN InvoiceLine il ON il.InvoiceId = i.InvoiceId",
+        "question": "What is the total revenue?" }'
+```
+
+| Field | Meaning |
+|---|---|
+| `sql` | One `SELECT`, in the dialect of the database, 8,000 characters at most |
+| `question` | Optional. What the statement is meant to answer. It is what lets the certificate compare the statement with a declared metric the question names |
+
+Response: `{ messageId, sql, certificate, columns, rows, rowCount, totalCount, truncated }`,
+where `sql` is the statement as it ran (with the row cap) and `certificate` is the same
+object `/ask` returns. For the example above, on the demo data, the result is 20848.62 and
+the certificate reads `CONTRADICTED`, with 2328.60 as the figure over distinct invoices.
+
+The statement goes through what every statement of the assistant goes through: read-only,
+only the tables and columns of the catalog, never a masked column, the row policies of the
+caller, the row cap, the read-only connection. A statement that fails any of that answers
+422 with the reason and nothing runs. Same credential, gates and quotas as `/ask`, counted
+on their own, and every request is audited like an answer.
+
+It answers 404 until `ROSIE_CERTIFY_SQL=true`. That is deliberate: everywhere else a caller
+asks in words and never hands the engine SQL. Turning it on does not widen what can be read.
+It changes who writes the statement, so a caller holding the API credential can read
+anything that credential's row policies allow, in any combination, instead of what a
+question happens to produce. Turn it on where that is acceptable.
+
 ## GET /project-info (public)
 
 Metadata the widget needs before the first question, plus the security gate state:

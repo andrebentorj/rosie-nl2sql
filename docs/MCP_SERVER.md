@@ -74,7 +74,17 @@ likely, because the calling agent may have read an untrusted document earlier in
 context. One high-level tool that runs the full pipeline is strictly more defensible than
 what the browser widget does today, because the external model never sees SQL it can shape.
 
-The low-level surface (Profile B) is designed but not built: it is meant to be granted per
+**`certify_sql`, off by default.** With `ROSIE_CERTIFY_SQL=true` one more tool is listed:
+`certify_sql( sql, question? )` runs a `SELECT` the agent (or anyone) wrote and returns the
+result with the certificate, with no model in between. It is the exception to the paragraph
+above and is meant to be: an agent that already has SQL from somewhere else can have it
+checked before relying on the figure. The statement passes the validator, the catalog
+allowlist, the masked columns, the row policies of the session and the row cap, and the call
+is governed and audited like the others. It is not listed, and a call to it is an unknown
+tool, unless the installation turned it on. Leave it off when the agents that connect may
+have read untrusted text: a planted instruction could then choose the statement.
+
+The rest of the low-level surface (Profile B) is designed but not built: it is meant to be granted per
 person with a recorded justification, and there is no per-user identity to grant it against
 until the OAuth work lands. Building it now would hand those tools to everyone holding the
 shared token.

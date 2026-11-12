@@ -46,7 +46,7 @@ both figures and marks the answer `CONTRADICTED`.
 ## Measured, on public data
 
 Our own regression suite: 198 questions over the public Chinook sample database, the same
-bank on every engine, `gpt-6-luna`, one pass on version 1.16.0, with every question's result in
+bank on every engine, `gpt-6-luna`, one pass on version 1.17.0, with every question's result in
 [docs/benchmark-runs](docs/benchmark-runs). "Passed" means the answer met the suite's
 weighted criteria (structure, result size, and the exact value where the question has one);
 it is not exact-match accuracy, and we wrote the questions. Method, limits and how to
@@ -54,14 +54,28 @@ reproduce: [docs/BENCHMARK.md](docs/BENCHMARK.md).
 
 | | MySQL 8.4 | PostgreSQL 16 | SQL Server 2022 |
 |---|---|---|---|
-| Questions passed | 196 of 198 (99.0%) | 196 of 198 (99.0%) | 196 of 198 (99.0%) |
+| Questions passed | 196 of 198 (99.0%) | 195 of 198 (98.5%) | 195 of 198 (98.5%) |
 | Must-refuse questions refused (writes, masked data, injection) | 20 of 20 | 20 of 20 | 20 of 20 |
 | Trap questions, built from the error classes the certificate covers | 35 | 35 | 35 |
 | of which: wrong answer went out with no warning | 0 | 0 | 0 |
-| of which: flagged for repeated rows, the check the certificate is known for | 1 | 1 | 3 |
-| Right answers flagged anyway (false alarms) | 6 of 96 | 6 of 93 | 7 of 94 |
-| Answers that failed the suite and carried a clean certificate (misread questions) | 0 | 1 | 0 |
+| of which: flagged for repeated rows, the check the certificate is known for | 2 | 1 | 2 |
+| Right answers flagged anyway (false alarms) | 6 of 94 | 5 of 92 | 7 of 92 |
+| Answers that failed the suite and carried a clean certificate (misread questions) | 1 | 1 | 1 |
 | Cost of the whole run | US$ 0.14 | US$ 0.15 | US$ 0.15 |
+
+**The guarantee, and its test.** If an answer adds up or averages a column and its certificate
+reads `CHECKS_PASSED` or `CROSS_CHECKED`, the figure is the one you get by taking each record
+of that table once. A property test generates statements by combination (joins, `WITH`,
+derived tables, `DISTINCT`, `GROUP BY`, `HAVING`, `ORDER BY`), works out the truth by a route
+of its own and holds the certificate to that: 9,624 statements on each of MySQL and
+PostgreSQL and 9,592 on SQL Server, no wrong total with a clean certificate and no right
+total called wrong ([docs/CERTIFICATE.md](docs/CERTIFICATE.md#what-is-guaranteed-and-how-it-is-tested)).
+It is about the calculation, not about whether the question was understood.
+
+**A certificate for SQL you did not get from Rosie.** With `ROSIE_CERTIFY_SQL=true`,
+`POST /certify` and the MCP tool `certify_sql` run a `SELECT` written by another assistant, a
+BI tool or a person, and return its result with the same certificate, with no model
+involved ([docs/API.md](docs/API.md)). Off by default.
 
 **On a benchmark we did not write.** On [BIRD Mini-Dev](docs/BIRD.md) (500 public questions,
 11 databases, context built from the schema alone) Rosie scores 54.4% execution accuracy on

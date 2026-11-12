@@ -12,13 +12,13 @@ question bank in `contexts/demo/eval/questions/`. Setup is in `demo/README.md`.
 
 ## Latest run
 
-2026-11-12, engine version 1.16.0, model `gpt-6-luna`, cross-check and second attempt enabled,
+2026-11-12, engine version 1.17.0, model `gpt-6-luna`, cross-check and second attempt enabled,
 one pass over the bank on each engine, the three engines at the same time. Same data, same
 context directory, same 198 questions.
 
 | Measure | MySQL 8.4 | PostgreSQL 16 | SQL Server 2022 |
 |---|---|---|---|
-| Questions passed | 196 of 198 (99.0%) | 196 of 198 (99.0%) | 196 of 198 (99.0%) |
+| Questions passed | 196 of 198 (99.0%) | 195 of 198 (98.5%) | 195 of 198 (98.5%) |
 | Cost of the whole run | US$ 0.14 | US$ 0.15 | US$ 0.15 |
 
 | Category | MySQL | PostgreSQL | SQL Server |
@@ -26,15 +26,15 @@ context directory, same 198 questions.
 | single-table | 24 / 24 | 24 / 24 | 24 / 24 |
 | aggregations | 24 / 24 | 24 / 24 | 24 / 24 |
 | multi-table-joins | 29 / 29 | 28 / 29 | 28 / 29 |
-| date-filtering | 20 / 20 | 20 / 20 | 19 / 20 |
+| date-filtering | 19 / 20 | 19 / 20 | 18 / 20 |
 | entity-resolution | 19 / 20 | 19 / 20 | 20 / 20 |
 | ranking | 14 / 14 | 14 / 14 | 14 / 14 |
-| ambiguity-handling (must ask instead of guessing) | 11 / 12 | 12 / 12 | 12 / 12 |
+| ambiguity-handling (must ask instead of guessing) | 12 / 12 | 12 / 12 | 12 / 12 |
 | negative-edge-cases (writes, masked data, injection: must refuse) | 20 / 20 | 20 / 20 | 20 / 20 |
 | poisoned-silent-failures | 35 / 35 | 35 / 35 | 35 / 35 |
 
-**Every question of every run is in the package**: `docs/benchmark-runs/1.16.0-mysql.json`,
-`1.16.0-postgres.json` and `1.16.0-sqlserver.json` hold, per question, what was asked, the
+**Every question of every run is in the package**: `docs/benchmark-runs/1.17.0-mysql.json`,
+`1.17.0-postgres.json` and `1.17.0-sqlserver.json` hold, per question, what was asked, the
 SQL that ran, whether it passed and why not, the certificate verdict, what was flagged or
 skipped, whether a second attempt happened and how a trap came to count as avoided. The
 counts on this page can be recounted from those files (`scripts/benchmark-export.js` writes
@@ -42,27 +42,26 @@ them from a run). What they do not hold: the rows returned, the text of the answ
 token counts, so the cost line and the correctness of each answer cannot be recomputed from
 them; the bank and the data are public and the SQL is there to run.
 
-Three engines at the same score is a coincidence of one pass. The same bank gave 193, 197
-and 192 on 1.12.0 and 194, 190 and 195 on 1.13.0, with nothing in between that changes how a
-question is answered. Read 99% as "between 96% and 100% on a small model, one pass".
+The same bank has given between 190 and 197 on one engine or another across the runs listed
+under Earlier runs, with nothing in between that changes how a question is answered. Read
+these figures as "between 96% and 100% on a small model, one pass".
 
 The misses:
 
-- **MySQL.** Two: a clarification the bank did not expect ("the States") and an ambiguous
-  request ("Show the totals") answered without asking.
-- **PostgreSQL.** Two: a clarification the bank did not expect, and a question about what a
-  customer bought answered with the customer's own row. That last one went out with
-  `CHECKS_PASSED`: nothing is structurally wrong with the query, and the checks see the
-  calculation, not the reading of the question (`docs/CERTIFICATE.md`).
-- **SQL Server.** Two: an unexpected clarification, and the same customer question answered
-  with the customer's own row, there with `NOT_APPLICABLE`.
+- **MySQL.** Two: a list of invoices answered as a count and a total, and "sales billed to
+  the States" read as "billed to any state".
+- **PostgreSQL.** Three: two clarifications the bank did not expect, and a list of invoices
+  answered as a count and a total.
+- **SQL Server.** Three: two clarifications the bank did not expect, and a list of invoices
+  answered as a count.
 
 **Answers that failed the bank and carried a clean certificate** (`CHECKS_PASSED` or
-`CROSS_CHECKED`): 0 on MySQL, 1 on PostgreSQL, 0 on SQL Server in this run; 4 in the run on
-1.13.0 (two wrong figures and two lists answered as a summary). This is the count to read
-first, and it is a floor, not the whole of it: the value of the answer is compared with a
-reference on 39 questions and 24 traps per engine, and for the 98 list questions only the
-size of the result is compared, not its content.
+`CROSS_CHECKED`): 1 on each engine in this run, each of them a list answered as a summary.
+Nothing is structurally wrong with those queries, and the checks see the calculation, not
+the reading of the question (`docs/CERTIFICATE.md`). This is the count to read first, and it
+is a floor, not the whole of it: the value of the answer is compared with a reference on 39
+questions and 24 traps per engine, and for the 99 list questions only the size of the result
+is compared, not its content.
 
 ## Silent wrong answers
 
@@ -72,9 +71,8 @@ only partly covers, a filter that removes nothing. Each question can end three w
 
 | Outcome on 35 poisoned questions | MySQL | PostgreSQL | SQL Server |
 |---|---|---|---|
-| Avoided: the value matches the truth query | 22 | 22 | 20 |
-| Avoided: the model asked instead of answering | 0 | 1 | 0 |
-| A wrong or partial answer was produced and the Answer Certificate flagged it | 13 | 12 | 15 |
+| Avoided: the value matches the truth query | 21 | 21 | 21 |
+| A wrong or partial answer was produced and the Answer Certificate flagged it | 14 | 14 | 14 |
 | A wrong answer went out looking fine | 0 | 0 | 0 |
 
 Read "0" with what stands behind it.
@@ -82,68 +80,67 @@ Read "0" with what stands behind it.
 - **By class, the flagged ones are mostly notes about the data.** Period: 6 on every engine.
   Coverage: 5 on every engine. Those fire on the same questions in every run, and several of
   them describe a right answer ("tracks priced under 5 dollars" returns every track, and the
-  note says the filter removes nothing). Repeated rows: 1, 1 and 3. A filter value that does
-  not exist: 1, 0 and 1.
-- **The fan-out check, the one the product is named for, spoke five times in 105 trap
-  answers.** The model avoided the other repeated-total traps by itself, helped by a context
-  that tells it not to sum an invoice total after joining its lines. The check is proved by
-  the test suites on three real engines; this benchmark shows it rarely has to act on this
-  schema with this context, which is not the same as showing how it does on yours.
+  note says the filter removes nothing). Repeated rows: 2, 1 and 2. A filter value that does
+  not exist: 1, 2 and 1.
+- **The fan-out check spoke five times in 105 trap answers.** The model avoided the other
+  repeated-total traps by itself, helped by a context that tells it not to sum an invoice
+  total after joining its lines. This benchmark shows the check rarely has to act on this
+  schema with this context; it is not where the check is proved. That is the property test
+  described in `docs/CERTIFICATE.md`: 9,624 generated statements per engine, each with its
+  truth worked out separately, with no wrong total going out clean and no right total called
+  wrong.
 - **The traps are built from the error classes the checks cover.** A wrong answer of another
   kind is outside this table; see the count of clean certificates above.
 - **11 of the 35 traps have no truth value.** For those, "flagged" means the expected class
   of warning fired, and "avoided" can rest on the expected check having passed, which is the
-  check judging itself. Each avoided trap now records how it was avoided, and in this run
-  none was counted that way: all 11 are the period and coverage notes above. Since 1.16.0
-  an answer that states a figure with no query behind it counts as a miss.
+  check judging itself. Each avoided trap records how it was avoided, and in this run none
+  was counted that way: all 11 are the period and coverage notes above.
 
 What the certificate said over all 198 questions:
 
 | Verdict | MySQL | PostgreSQL | SQL Server |
 |---|---|---|---|
-| `CHECKS_PASSED` | 103 | 101 | 96 |
-| `CROSS_CHECKED` | 7 | 5 | 6 |
-| `FLAGGED` | 20 | 18 | 22 |
+| `CHECKS_PASSED` | 100 | 100 | 95 |
+| `CROSS_CHECKED` | 7 | 8 | 11 |
+| `FLAGGED` | 21 | 19 | 21 |
 | `CONTRADICTED` | 0 | 0 | 0 |
-| `NOT_CHECKED` | 1 | 4 | 5 |
-| `NOT_APPLICABLE` | 35 | 36 | 36 |
-| Right answers flagged anyway (false alarms) | 6 of 96 (6.3%) | 6 of 93 (6.5%) | 7 of 94 (7.4%) |
+| `NOT_CHECKED` | 2 | 1 | 1 |
+| `NOT_APPLICABLE` | 36 | 36 | 36 |
+| Right answers flagged anyway (false alarms) | 6 of 94 (6.4%) | 5 of 92 (5.4%) | 7 of 92 (7.6%) |
 
-A false alarm is counted over answers that passed the bank and had something to check. Up
-to 1.15.0 the same line counted every flagged answer outside the traps, right or wrong, which
-put a wrong answer that was correctly flagged among the false alarms.
+A false alarm is counted over answers that passed the bank and had something to check.
 
 What the runs since 1.12.0 measured.
 
+- **Fewer answers go out "not checked".** Since 1.17.0 the column that is added up is followed
+  down to its table through `WITH` names and derived tables, and a table joined to a derived
+  table is checked like any other join. Answers marked `NOT_CHECKED`: 2, 1 and 1 in this
+  run, against 1, 4 and 5 on 1.16.0 and 2, 2 and 4 on 1.13.0. The ones left are a total that
+  mixes columns of two tables and a table with no single-column key.
 - **A total that is meant to repeat is not condemned.** The catalog price added once per line
   sold, and the average track length weighted by sales, went out on every engine with the
-  repeated figure, no second attempt, and `FLAGGED` with both figures side by side. They
-  are two of the false alarms above on each engine.
-- **A right total per group is not called repeated.** "Units sold per playlist" was added in
-  1.16.0: a track on two playlists counts in both, and each figure is exact. On all three
-  engines it went out `CHECKS_PASSED`. The first pass of this version flagged it on two
-  engines, for a reason the benchmark found: with a `LEFT JOIN`, rows with no match were
-  read as repetition. That is fixed and covered by a test on real PostgreSQL; the files here
-  are from the pass after the fix.
-- **The second attempt replaces less, on purpose.** Since 1.16.0 a second answer is accepted
-  only when it filters by the same conditions and returns the figure the first attempt had
-  already computed over distinct records. In this run the checks sent an answer back 12
-  times: 5 were corrected and 7 were kept as first answered, with their warning. In the run
-  on 1.13.0, under the older rule (a clean verdict was enough), 8 of 11 were corrected. The
-  difference is the price of not replacing a right answer with a wrong one that looks clean,
-  which an independent review showed the older rule doing.
+  repeated figure and no second attempt, `FLAGGED` with both figures side by side where the
+  re-derivation ran. They are among the false alarms above.
+- **A right total per group is not called repeated.** "Units sold per playlist": a track on
+  two playlists counts in both, and each figure is exact. `CHECKS_PASSED` on all three
+  engines.
+- **The second attempt replaces less, on purpose.** A second answer is accepted only when it
+  filters by the same conditions and returns the figure the first attempt had already
+  computed over distinct records. In this run the checks sent an answer back 13 times: 4
+  were corrected, 8 were kept as first answered with their warning, and once the model
+  changed nothing. Under the rule of 1.13.0 (a clean verdict was enough) 8 of 11 were
+  corrected. The difference is the price of not replacing a right answer with a wrong one
+  that looks clean, which an independent review showed the older rule doing.
 - **No `CONTRADICTED` in any run.** The model avoided or corrected every repeated total on a
-  column the demo context declares. That verdict is covered by the test suites on all three
-  engines, not by this benchmark.
-- **A join inside a `WITH`.** Added in 1.12.0, where it found two defects (the probes dropped
-  the `WITH`; on SQL Server the parser could not read back a bracketed `WITH` name). Both
-  were fixed in 1.13.0. In this run the answer was right on MySQL and PostgreSQL and went
-  out `CROSS_CHECKED` and `CHECKS_PASSED`. On SQL Server the model's query repeated
-  invoices, the correction it then offered was not accepted, and the answer went out
-  `FLAGGED`.
+  column the demo context declares. That verdict is covered by the test suites and by the
+  property test on all three engines, not by this benchmark.
 
 ## Earlier runs
 
+- **1.16.0, 2026-11-12, 198 questions.** 196 on each engine; of 35 traps, 22, 23 and 20
+  avoided and 13, 12 and 15 flagged, none silent; `NOT_CHECKED` on 1, 4 and 5 answers. The
+  first pass of that version found that a `LEFT JOIN` was read as repetition (rows with no
+  match were counted), fixed before the pass that was published.
 - **1.13.0, 2026-11-12, 197 questions.** MySQL 194 (98.5%), PostgreSQL 190 (96.4%), SQL Server
   195 (99.0%); of 35 traps, 24, 22 and 23 avoided and 11, 13 and 12 flagged, none silent.
   Four answers failed the bank with a clean certificate. An independent review of this
