@@ -200,7 +200,7 @@ key or with more than the key, two levels down, inside an `IN` subquery, dedupli
 below and joined again above, or with the table joined to a derived list of keys. For each statement the truth is worked out by a route of its
 own, on the real database, and the certificate is held to the two halves of the guarantee.
 
-Version 1.17.0, every combination, on the demo database of each engine:
+Version 1.19.0, every combination, on the demo database of each engine:
 
 | | MySQL 8.4 | PostgreSQL 16 | SQL Server 2022 |
 |---|---|---|---|
@@ -210,20 +210,52 @@ Version 1.17.0, every combination, on the demo database of each engine:
 | of which were called wrong or shown with both figures | 3,332 | 3,332 | 3,300 |
 | With the right total | 6,292 | 6,292 | 6,292 |
 | of which were called wrong | **0** | **0** | **0** |
-| of which went out clean | 5,964 | 5,964 | 5,964 |
+| of which went out clean | 5,898 | 5,898 | 5,898 |
 
-The 328 right totals that were flagged carry notes about the data that are true (a filter
-that removes no rows, mostly), and 12 of them a note that rows repeat where the total sits
-in `HAVING` or `ORDER BY` and could not be computed a second time. On SQL Server 32
-statements were refused by the database before running (the sum of an integer column
-overflows there). Summaries per shape are in `docs/benchmark-runs/property-test-1.17.0-*.json`;
-`npm run test:fuzz` runs a sample, `--all` runs every combination, and every run prints its
-seed.
+Of the right totals that did not go out clean, 344 were flagged with notes about the data
+that are true (a filter that removes no rows, mostly; 28 of them a note that rows repeat,
+where the total sits in `HAVING` or `ORDER BY` or the answer was cut at the row limit, and
+could not be computed a second time), and 50 were reported as not checked: grouped answers
+cut at the row limit, where the groups shown agreed and nothing can be said of the others.
+On SQL Server 32 statements were refused by the database before running (the sum of an
+integer column overflows there). Summaries per shape are in
+`docs/benchmark-runs/property-test-1.19.0-*.json`; `npm run test:fuzz` runs a sample, `--all`
+runs every combination, and every run prints its seed.
+
+**On schemas this project did not design.** The same test builds its statements from any
+catalog: for each table with a numeric column and a relationship, the tables it points to
+and the tables that point to its key. `test/fuzz/schemas.js` runs it on the databases of BIRD
+Mini-Dev (PostgreSQL, 400 statements each, seed 1). Four of the eleven have no table with a
+numeric column and a relationship, so there is no total to test there.
+
+| Database | Statements certified | With a wrong total | of which clean | With the right total | of which called wrong |
+|---|---|---|---|---|---|
+| `california_schools` | 400 | 40 | **0** | 360 | **0** |
+| `codebase_community` | 400 | 116 | **0** | 284 | **0** |
+| `european_football_2` | 400 | 54 | **0** | 346 | **0** |
+| `financial` | 400 | 77 | **0** | 323 | **0** |
+| `formula_1` | 345 | 103 | **0** | 242 | **0** |
+| `student_club` | 249 | 42 | **0** | 207 | **0** |
+| `superhero` | 400 | 94 | **0** | 306 | **0** |
+| **All seven** | **2,594** | **526** | **0** | **2,068** | **0** |
+
+Of the 526 wrong totals, 520 were called wrong or shown with both figures and the rest
+were reported as not checked. Some statements were refused by the database before running
+(on two of the databases `ROUND` with decimals does not exist for the floating-point column
+the generator picked).
+
+This is where the test earned its keep. Its first pass over these databases found sixteen
+wrong totals with a clean certificate, all of one kind the demo database could not show: a
+grouped answer with 13,645 groups, of which 500 were shown and re-derived, and all 500
+agreed. The certificate said `CROSS_CHECKED` about a statement whose other groups were
+wrong. Since 1.19.0, on an answer cut at the row limit a group that differs is still
+evidence, and all the shown groups agreeing is not agreement.
 
 **What this is not.** It is a property tested on a family of statements, on one schema, not
 a proof about all SQL. The same test, on the version before this one, found two wrong totals
 with a clean certificate and six right ones called wrong in its first 150 statements, which
-is how the rule above came to replace the ones before it. A statement outside the family
+is how the rule above came to replace the ones before it, and one more kind on other schemas
+(above). A statement outside the family
 that breaks the property is a defect, and the generator is where its shape gets added. And
 the guarantee is about the calculation only: a query that adds up the right records for the
 wrong question passes it (see the next section).

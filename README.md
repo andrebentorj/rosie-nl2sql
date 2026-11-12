@@ -68,8 +68,9 @@ reads `CHECKS_PASSED` or `CROSS_CHECKED`, the figure is the one you get by takin
 of that table once. A property test generates statements by combination (joins, `WITH`,
 derived tables, `DISTINCT`, `GROUP BY`, `HAVING`, `ORDER BY`), works out the truth by a route
 of its own and holds the certificate to that: 9,624 statements on each of MySQL and
-PostgreSQL and 9,592 on SQL Server, no wrong total with a clean certificate and no right
-total called wrong ([docs/CERTIFICATE.md](docs/CERTIFICATE.md#what-is-guaranteed-and-how-it-is-tested)).
+PostgreSQL and 9,592 on SQL Server, and 2,594 more built from the catalogs of seven public
+databases we did not design: no wrong total with a clean certificate and no right total
+called wrong ([docs/CERTIFICATE.md](docs/CERTIFICATE.md#what-is-guaranteed-and-how-it-is-tested)).
 It is about the calculation, not about whether the question was understood.
 
 **A certificate for SQL you did not get from Rosie.** With `ROSIE_CERTIFY_SQL=true`,

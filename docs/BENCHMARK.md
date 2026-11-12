@@ -135,6 +135,62 @@ What the runs since 1.12.0 measured.
   column the demo context declares. That verdict is covered by the test suites and by the
   property test on all three engines, not by this benchmark.
 
+## Questions that invite a repeated total, on schemas we did not design
+
+The traps above were written by the team that builds the engine, on one schema, with a
+context that warns the model about the commonest of them. This run takes all three away.
+
+The questions are generated from each catalog, not written: for every table with a numeric
+column and a table pointing to its key, "What is the total <column> of the <table> records
+that have at least one <child> record?", the same as an average, and the same per value of
+another column. Joining the child table is the natural way to answer and it repeats the
+records, which is the trap. The right answer is worked out on the data, each record once.
+The schemas are the demo database and five of BIRD Mini-Dev (the ones with a numeric column
+and a child table): 34 questions, three passes, PostgreSQL, engine version 1.19.0,
+2026-11-12. The BIRD contexts are the introspected catalog and one generic instruction:
+nothing in them mentions totals or joins, and no column is declared.
+
+| Outcome of 102 answers per model | `gpt-6-luna` | `gpt-6.1-terra` |
+|---|---|---|
+| Right figure, clean certificate | 88 | 92 |
+| Right figure, with a warning | 7 | 10 |
+| Wrong figure, with a warning | 7 | 0 |
+| Wrong figure, marked not checked | 0 | 0 |
+| **Wrong figure, clean certificate** | **0** | **0** |
+| No figure (clarification, error) | 0 | 0 |
+
+What it says, and how far it goes.
+
+- **The small model wrote the repeated total 7 times in 102 (6.9%), on three of the six
+  schemas, and every one went out flagged with both figures.** The stronger model did not
+  write it once. So the trap is real for a small model without a context that warns it, it
+  is uncommon, and it gets rarer as models improve: the check matters most where the model
+  is cheapest.
+- **None of the seven was called wrong, and none was corrected.** No column of these schemas
+  is declared a value of each record, so the certificate shows both figures and takes no
+  side (`docs/CERTIFICATE.md`), and the second attempt has nothing to send back. With the
+  second attempt turned off the same model gave the same picture (86 right, 9 right with a
+  warning, 7 wrong with a warning). Declaring the columns is what would turn those seven
+  into `CONTRADICTED` and send them back; that was not done here, to keep the contexts as
+  the benchmark provides them.
+- **The warnings on right figures (7 and 10) are notes about the data**, a filter that
+  removes no rows for the most part.
+- **These are 34 questions of one family.** They measure one error, the one the certificate
+  is known for, and say nothing about a question that was misread. They are machine-made and
+  read like it, which keeps our hand out of them and also makes them unlike what a person
+  types.
+- **One correction was made after the run, and it is recorded in the file.** Nine answers
+  (one question, three passes, three runs) were first counted as wrong with a clean
+  certificate. The statement was right: it returns exactly what the truth query returns.
+  The judge of this test compared a group whose total is NULL as unequal to itself. The
+  judge is fixed and those answers carry a note. An earlier pass of this test was discarded
+  for defects of the same kind in the test itself (an answer cut at the row limit counted as
+  wrong, and a column named `number` that turned the question into a count).
+
+Every answer, with its SQL, verdict and outcome, is in
+`docs/benchmark-runs/trap-questions-1.19.0.json`. `node test/fuzz/questions.js --list` shows
+the questions without calling a model.
+
 ## Earlier runs
 
 - **1.16.0, 2026-11-12, 198 questions.** 196 on each engine; of 35 traps, 22, 23 and 20

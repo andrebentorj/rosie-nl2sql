@@ -1,0 +1,127 @@
+{
+ "seed": 1,
+ "perSchema": 400,
+ "schemas": [
+  {
+   "schema": "california_schools",
+   "ran": true,
+   "combinations": 720,
+   "certified": 400,
+   "refusedBeforeRunning": 0,
+   "wrongTotals": 40,
+   "wrongTotalWithCleanCertificate": 0,
+   "wrongTotalsNamed": 40,
+   "wrongTotalsNotChecked": 0,
+   "rightTotals": 360,
+   "rightTotalCalledWrong": 0,
+   "rightTotalsClean": 328
+  },
+  {
+   "schema": "card_games",
+   "ran": false,
+   "reason": "nothing to test"
+  },
+  {
+   "schema": "codebase_community",
+   "ran": true,
+   "combinations": 6552,
+   "certified": 400,
+   "refusedBeforeRunning": 0,
+   "wrongTotals": 116,
+   "wrongTotalWithCleanCertificate": 0,
+   "wrongTotalsNamed": 110,
+   "wrongTotalsNotChecked": 6,
+   "rightTotals": 284,
+   "rightTotalCalledWrong": 0,
+   "rightTotalsClean": 251
+  },
+  {
+   "schema": "debit_card_specializing",
+   "ran": false,
+   "reason": "nothing to test"
+  },
+  {
+   "schema": "european_football_2",
+   "ran": true,
+   "combinations": 2760,
+   "certified": 400,
+   "refusedBeforeRunning": 0,
+   "wrongTotals": 54,
+   "wrongTotalWithCleanCertificate": 0,
+   "wrongTotalsNamed": 54,
+   "wrongTotalsNotChecked": 0,
+   "rightTotals": 346,
+   "rightTotalCalledWrong": 0,
+   "rightTotalsClean": 319
+  },
+  {
+   "schema": "financial",
+   "ran": true,
+   "combinations": 4056,
+   "certified": 400,
+   "refusedBeforeRunning": 0,
+   "wrongTotals": 77,
+   "wrongTotalWithCleanCertificate": 0,
+   "wrongTotalsNamed": 77,
+   "wrongTotalsNotChecked": 0,
+   "rightTotals": 323,
+   "rightTotalCalledWrong": 0,
+   "rightTotalsClean": 267
+  },
+  {
+   "schema": "formula_1",
+   "ran": true,
+   "combinations": 7128,
+   "certified": 345,
+   "refusedBeforeRunning": 55,
+   "wrongTotals": 103,
+   "wrongTotalWithCleanCertificate": 0,
+   "wrongTotalsNamed": 103,
+   "wrongTotalsNotChecked": 0,
+   "rightTotals": 242,
+   "rightTotalCalledWrong": 0,
+   "rightTotalsClean": 223
+  },
+  {
+   "schema": "student_club",
+   "ran": true,
+   "combinations": 3864,
+   "certified": 249,
+   "refusedBeforeRunning": 151,
+   "wrongTotals": 42,
+   "wrongTotalWithCleanCertificate": 0,
+   "wrongTotalsNamed": 42,
+   "wrongTotalsNotChecked": 0,
+   "rightTotals": 207,
+   "rightTotalCalledWrong": 0,
+   "rightTotalsClean": 186
+  },
+  {
+   "schema": "superhero",
+   "ran": true,
+   "combinations": 3480,
+   "certified": 400,
+   "refusedBeforeRunning": 0,
+   "wrongTotals": 94,
+   "wrongTotalWithCleanCertificate": 0,
+   "wrongTotalsNamed": 94,
+   "wrongTotalsNotChecked": 0,
+   "rightTotals": 306,
+   "rightTotalCalledWrong": 0,
+   "rightTotalsClean": 248
+  },
+  {
+   "schema": "thrombosis_prediction",
+   "ran": false,
+   "reason": "nothing to test"
+  },
+  {
+   "schema": "toxicology",
+   "ran": false,
+   "reason": "nothing to test"
+  }
+ ],
+ "engineVersion": "1.19.0",
+ "database": "postgres",
+ "source": "BIRD Mini-Dev, eleven databases, statements built from each catalog (test/fuzz/schemas.js)"
+}
