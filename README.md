@@ -155,6 +155,7 @@ directory. The contract is in [contexts/example/README.md](docs/CONTEXT_DIRECTOR
 | Have a person approve the query behind a recurring question | [docs/APPROVED_QUERIES.md](docs/APPROVED_QUERIES.md) |
 | Measure accuracy on my own questions, and catch regressions | [docs/EVALUATION.md](docs/EVALUATION.md) |
 | Monitor it with Prometheus and set alerts | [docs/MONITORING.md](docs/MONITORING.md) |
+| Know how much one process carries, measured on my database | [docs/CAPACITY.md](docs/CAPACITY.md) |
 | Reload the context without a restart, and catch schema changes | [docs/OPERATIONS.md](docs/OPERATIONS.md) |
 | Answer a security review or a vendor questionnaire | [docs/SECURITY_OVERVIEW.md](docs/SECURITY_OVERVIEW.md) |
 | Know what leaves my network, and use my own model | [docs/DATA_PRIVACY.md](docs/DATA_PRIVACY.md) |
