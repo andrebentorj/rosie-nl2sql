@@ -220,8 +220,12 @@ masked column appears by name only.
 
 `GET /admin/console` is a page that shows that document. The page holds no data: it asks
 for the admin token, keeps it for the browser tab, and calls `/admin/overview`. Both routes
-answer 404 until `ROSIE_ADMIN_TOKEN` is set, and `ROSIE_API_TOKEN` opens neither. See
-[OPERATIONS.md](OPERATIONS.md).
+answer 404 until an administrator credential is configured, and `ROSIE_API_TOKEN` opens
+neither. See [OPERATIONS.md](OPERATIONS.md).
+
+Every `/admin/*` route accepts, as bearer, the shared `ROSIE_ADMIN_TOKEN` or a JWT carrying
+the administrator role (`ROSIE_ADMIN_JWT_CLAIM`, `ROSIE_ADMIN_JWT_VALUE`). A valid JWT without
+the role answers 403; an invalid one, 401.
 
 ## POST /admin/approve, /admin/describe, /admin/dismiss (the admin token and the write switch)
 

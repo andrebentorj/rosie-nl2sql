@@ -55,6 +55,22 @@ ignored: the token says who the user is. Answer handles are bound to the verifie
 a handle minted for one user cannot be redeemed by another, and whatever it runs is filtered
 by the redeemer's own claims.
 
+## Administrators
+
+The same identity provider can sign administrators in to the administration console and
+routes. Name the claim that carries the role and the value it must hold:
+
+```bash
+ROSIE_ADMIN_JWT_CLAIM=roles
+ROSIE_ADMIN_JWT_VALUE=rosie-admin
+```
+
+A token is then accepted on `/admin/*` when it passes every check above **and** that claim
+holds that value (as a string, a space-separated string or a list). A valid token without
+the role answers 403, so signing in to ask questions gives no access to administration.
+Changes made from the console are recorded under the verified name and user id. Details and
+the shared-token alternative are in [OPERATIONS.md](OPERATIONS.md).
+
 ## Sending the token from the widget
 
 Pass the user's access token as the widget's `api-token` attribute, refreshed by the host

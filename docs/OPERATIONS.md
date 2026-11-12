@@ -114,8 +114,26 @@ docker exec rosie node scripts/weekly-report.js --out /app/logs/weekly.md
 ## The administration console
 
 `https://<your host>/api/assistant/admin/console` is a page for the person who answers for
-the assistant. It needs `ROSIE_ADMIN_TOKEN` to be set on the server and asks for it when it
-opens. It is read-only unless `ROSIE_ADMIN_WRITE=true` is also set.
+the assistant. It asks for a credential when it opens, and it is read-only unless
+`ROSIE_ADMIN_WRITE=true` is also set.
+
+There are two ways in, and an installation uses one or both:
+
+| Credential | Setting | What a change is recorded under |
+|---|---|---|
+| The shared admin token | `ROSIE_ADMIN_TOKEN` | The name the person typed. The token says the request is allowed, not who sent it |
+| The administrator's own sign-in token | `ROSIE_ADMIN_JWT_CLAIM` and `ROSIE_ADMIN_JWT_VALUE`, with the identity provider of [IDENTITY.md](IDENTITY.md) | The name and user id in the verified token. What is typed is ignored |
+
+With sign-in, the token is verified exactly as a token for questions is (signature, issuer,
+audience, expiry) and must also carry the role: the claim you name holding the value you
+name, as a string, a space-separated string or a list. A valid token without the role is
+refused with 403, so a token issued for asking questions opens nothing here. There is no
+default claim or value. Leave `ROSIE_ADMIN_TOKEN` unset to accept sign-in only; removing an
+administrator is then done at the identity provider, with no secret to rotate.
+
+The page takes the token in its one field. It does not run a sign-in flow of its own: the
+person pastes a token, or your portal opens the console for them. It is kept for the browser
+tab and gone with it.
 
 | View | What it shows |
 |---|---|
@@ -158,9 +176,9 @@ Things to know before turning it on:
 - **More than one replica.** The change is applied by the replica that received it. The
   others pick it up on their next reload (`docker kill --signal=HUP`), and only if they
   share the same context directory.
-- **The name is what the person typed.** The admin token says the request is allowed, not
-  who sent it. For a record tied to an identity, keep the console behind your access proxy
-  and its logs.
+- **With the shared token, the name is what the person typed.** For a record tied to an
+  identity, configure administrator sign-in (above): the record then carries the verified
+  name and user id, and says `identityVerified: true`.
 
 Put it behind your VPN or your reverse proxy's access rules, like any administration page.
 The page is served with a content security policy that lets it talk to its own origin only,
@@ -213,6 +231,7 @@ missing.
 |---|---|---|
 | `ROSIE_SCHEMA_DRIFT_INTERVAL_MS` | `3600000` | How often the comparison runs. Minimum one minute. `0` turns it off |
 | `ROSIE_ADMIN_TOKEN` | unset | Opens `POST /api/assistant/admin/reload`, `GET /api/assistant/admin/overview` and the console page. Unset, those routes answer 404 and the reload signal still works |
+| `ROSIE_ADMIN_JWT_CLAIM`, `ROSIE_ADMIN_JWT_VALUE` | unset | The claim that carries the administrator role and the value it must hold. Set both or neither; they need `ROSIE_JWT_ISSUER` |
 | `ROSIE_ADMIN_WRITE` | `false` | With the admin token, allows the three changes of the console (approve, dismiss, edit a description). Off, the console is read-only and those routes answer 403 |
 
 ### Limits
