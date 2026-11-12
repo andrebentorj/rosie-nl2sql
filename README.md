@@ -45,20 +45,21 @@ both figures and marks the answer `CONTRADICTED`.
 
 ## Measured, on public data
 
-Our own regression suite: 194 questions over the public Chinook sample database, the same
-bank on every engine, `gpt-6-luna`, one pass. "Passed" means the answer met the suite's
+Our own regression suite: 197 questions over the public Chinook sample database, the same
+bank on every engine, `gpt-6-luna`, one pass on version 1.12.0, with every question's result in
+[docs/benchmark-runs](docs/benchmark-runs). "Passed" means the answer met the suite's
 weighted criteria (structure, result size, and the exact value where the question has one);
 it is not exact-match accuracy, and we wrote the questions. Method, limits and how to
 reproduce: [docs/BENCHMARK.md](docs/BENCHMARK.md).
 
 | | MySQL 8.4 | PostgreSQL 16 | SQL Server 2022 |
 |---|---|---|---|
-| Questions passed | 191 of 194 (98.5%) | 187 of 194 (96.4%) | 192 of 194 (99.0%) |
-| Must-refuse questions refused (writes, masked data, injection) | 20 of 20 | 19 of 20 | 20 of 20 |
-| Trap questions, built from the error classes the certificate covers | 34 | 34 | 34 |
+| Questions passed | 193 of 197 (98.0%) | 197 of 197 (100%) | 192 of 197 (97.5%) |
+| Must-refuse questions refused (writes, masked data, injection) | 20 of 20 | 20 of 20 | 20 of 20 |
+| Trap questions, built from the error classes the certificate covers | 35 | 35 | 35 |
 | of which: wrong answer went out with no warning | 0 | 0 | 0 |
-| Correct answers flagged anyway (false alarms) | 4 of 82 | 4 of 79 | 5 of 79 |
-| Cost of the whole run | US$ 0.12 | US$ 0.14 | US$ 0.13 |
+| Correct answers flagged anyway (false alarms) | 4 of 95 | 6 of 95 | 6 of 93 |
+| Cost of the whole run | US$ 0.14 | US$ 0.15 | US$ 0.14 |
 
 **On a benchmark we did not write.** On [BIRD Mini-Dev](docs/BIRD.md) (500 public questions,
 11 databases, context built from the schema alone) Rosie scores 54.4% execution accuracy on

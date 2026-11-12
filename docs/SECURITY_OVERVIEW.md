@@ -62,7 +62,7 @@ version), run on every commit and before every release.
 | Which JWT algorithms? | Asymmetric only: RS256, ES256, PS256, EdDSA. `none` and the shared-secret HS family are never accepted. Issuer, audience and expiry are verified |
 | Is there SSO? | Rosie has no login screen. It accepts the tokens of the identity provider you already use, so SSO is whatever your application has |
 | Unauthenticated in production? | No. With `NODE_ENV=production` and no token configured, every request is refused |
-| Are administrative actions separated? | Yes. Metrics and context reload each have their own secret (`ROSIE_METRICS_TOKEN`, `ROSIE_ADMIN_TOKEN`); the application token opens neither. Both routes do not exist until their secret is set |
+| Are administrative actions separated? | Yes. Metrics and administration (context reload, the read-only overview and its console page) each have their own secret (`ROSIE_METRICS_TOKEN`, `ROSIE_ADMIN_TOKEN`); the application token opens neither. The routes do not exist until their secret is set. The console is read-only: it cannot change the catalog, the masks or the approved queries |
 | Can one user replay another's answer? | No. Follow-up actions (export, explain) need a handle signed by the server, bound to the user and the project, valid for 15 minutes. The SQL inside is validated again before it runs |
 | Rate limits? | Per client address: 100 questions an hour and 1,000 a day by default, and 3 concurrent questions per process. With several replicas the quotas can be shared through the engine database (`ROSIE_RATE_LIMIT_STORE=database`) |
 
@@ -82,7 +82,7 @@ and no licence check.
 | Question | Answer |
 |---|---|
 | What is recorded? | One audit row per question (who, the question, the SQL, the outcome, timings, tokens), the certificate of each answer, and ratings. Refusals are recorded with their reason |
-| Can the trail fail silently? | No. Each record goes to a local append-only file first, then to the database, with retries. `GET /health` and the `rosie_audit_sink_healthy` metric report a failing sink. With `ROSIE_AUDIT_POLICY=fail-closed`, Rosie refuses to answer while nothing can record |
+| Can the trail fail silently? | No. Each record is written to a local append-only file first, with a synchronous write that completes before the answer is sent, then to the database, with retries. A crash of the server loses no record; with `ROSIE_AUDIT_FSYNC=true` a crash of the host loses none either. The file survives a replaced container only when its directory is a mounted volume, which the installation steps do and `npm run doctor` checks. `GET /health` and the `rosie_audit_sink_healthy` metric report a failing sink. With `ROSIE_AUDIT_POLICY=fail-closed`, Rosie refuses to answer while nothing can record |
 | Are result rows stored? | No |
 | Retention? | You set it. `npm run retention -- --days 365` reports what is older than the period, and with `--confirm` removes it from the three engine tables. Nothing is removed unless you schedule that command |
 | What is in application logs? | Structured events with identifiers and reasons. Database error text and privilege details stay in the server log and are not returned to callers |

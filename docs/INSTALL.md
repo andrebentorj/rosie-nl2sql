@@ -91,8 +91,14 @@ docker run --rm -v "$PWD/rosie-context:/context" -v "$PWD/rosie-env:/out" \
   -e OPENAI_API_KEY -e DB_URL='postgres://user:password@host:5432/dbname' \
   <image> node scripts/rosie-init.js --context /context --env-dir /out --name "My Project"
 
-docker run -d -p 3001:3001 --env-file rosie-env/.env -v "$PWD/rosie-context:/context:ro" <image>
+docker run -d -p 3001:3001 --env-file rosie-env/.env -v "$PWD/rosie-context:/context:ro" \
+  -v rosie-logs:/app/logs <image>
 ```
+
+**Keep the `rosie-logs` volume.** `/app/logs` holds the audit file, the copy of every
+question and answer that survives a database outage. Without a volume it lives inside the
+container and is thrown away when the container is replaced, for example on every upgrade.
+`npm run doctor` (run inside the container) warns when the directory is not a mounted volume.
 
 The two directories must be writable by the container's user (uid 1000). The context lands
 in `./rosie-context` and the configuration in `./rosie-env/.env`, already pointing at

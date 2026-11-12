@@ -111,6 +111,30 @@ docker exec rosie node scripts/weekly-report.js --out /app/logs/weekly.md
 
 `npm run audit-report` and `npm run review` remain for the detail behind each line.
 
+## The administration console
+
+`https://<your host>/api/assistant/admin/console` is a read-only page for the person who
+answers for the assistant. It needs `ROSIE_ADMIN_TOKEN` to be set on the server and asks for
+it when it opens.
+
+| View | What it shows |
+|---|---|
+| Status | Engine version, model, database engine, whether the read-only user is SELECT-only, whether the audit trail is recording, and the "needs a person" list and numbers of the weekly report for the last 7 days |
+| To review | Answers that went out with a warning or were rated down, with the question, the reasons and the SQL |
+| Catalog | Every table and column the assistant may read, with the masked columns and the declared measures marked. This is the allowlist as the engine holds it, after the last reload |
+| Metrics and queries | Declared metrics and how each is answered, approved queries with who approved them and the review date, and the suspended ones with the reason |
+| Evaluation | The last `npm run evaluate`: held-out accuracy, the taught set, wrong answers by the warning they carried, regressions, and the questions not matched |
+
+What it does not do, on purpose, in this version: it changes nothing. Approving a query is
+still `npm run review`, editing a description is still the context files and a reload. A
+page that can only read cannot be used to change what the assistant may answer, so the
+admin token opening it is a smaller risk than the same token opening an editor.
+
+Put it behind your VPN or your reverse proxy's access rules, like any administration page.
+The page is served with a content security policy that lets it talk to its own origin only,
+is never cached and cannot be framed. Text typed by users (questions, comments) is shown as
+text.
+
 ## Schema drift
 
 The catalog is a file. The database keeps changing after it was written. When a column is
@@ -156,7 +180,7 @@ missing.
 | Variable | Default | Meaning |
 |---|---|---|
 | `ROSIE_SCHEMA_DRIFT_INTERVAL_MS` | `3600000` | How often the comparison runs. Minimum one minute. `0` turns it off |
-| `ROSIE_ADMIN_TOKEN` | unset | Opens `POST /api/assistant/admin/reload`. Unset, the route answers 404 and the signal still works |
+| `ROSIE_ADMIN_TOKEN` | unset | Opens `POST /api/assistant/admin/reload`, `GET /api/assistant/admin/overview` and the console page. Unset, those routes answer 404 and the reload signal still works |
 
 ### Limits
 

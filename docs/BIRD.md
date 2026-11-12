@@ -22,8 +22,13 @@ answers, which is what `docs/BENCHMARK.md` cannot say about itself.
 | Asked for clarification instead of answering (counted as wrong) | 14 |
 | The dataset card's baseline for the same model on PostgreSQL | 51.8% |
 
-The 51.8% is the "Baseline results" table on the dataset card: `gpt-6-luna` with the
-benchmark's fixed prompt, 500 questions per dialect. Rosie is 2.6 points above it. That is a small
+The 51.8% is the "Baseline results" table on the
+[dataset card](https://huggingface.co/datasets/birdsql/bird_mini_dev): row "GPT-6 Luna",
+column PostgreSQL, 51.80, described there as "fixed-prompt baseline execution accuracy (EX,
+%) on 500 questions per dialect". Read on 2026-11-10 and again on 2026-11-12. The card is a
+page that can change, so the figure is quoted with its date. The same table lists stronger
+models far above both numbers on PostgreSQL (GPT-6.1 Sol 89.00, Claude Opus 5.5 87.00,
+Claude Sonnet 5.5 85.60), with the benchmark's own prompt and no product around the model. Rosie is 2.6 points above it. That is a small
 margin from a single pass and the two setups are not identical (see Method), so read it as
 "in the same range", not as a lead. What the engine adds on this benchmark is modest: a
 schema summary in the prompt, tools to look up real values, and a retry when a query fails.

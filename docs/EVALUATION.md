@@ -34,6 +34,21 @@ its statement as the reference. A person already signed that pair. So the review
 the evaluation with no extra work: a wrong answer is corrected, approved, and from then on
 it is also a test.
 
+## Two sets, two figures
+
+Every question is placed in one of two sets, and the report gives an accuracy for each.
+
+| Set | Which questions | What its accuracy tells you |
+|---|---|---|
+| Already in the context | Approved queries, and any bank question whose text is also a question of `verified-queries.json` | That what you taught still works. It should be at or near 100%, and it says nothing about a question nobody wrote down |
+| Held out | Every other bank question | How the engine does on a question it meets for the first time. This is the figure to quote |
+
+One accuracy over both reads higher the more of the bank is copied from the examples, which
+is why they are never merged in the report. Keep part of the bank out of the examples on
+purpose: when a held-out question is answered wrong and you approve its correction, it moves
+to the first set, so add a new held-out question in its place. `npm run evaluate -- --list`
+shows the set of each question.
+
 Thirty to fifty questions that your teams really ask are worth more than five hundred
 invented ones. Start with the questions of the pilot.
 
@@ -45,6 +60,7 @@ npm run evaluate                     # every question
 npm run evaluate -- --sample 30      # 30 questions, the same 30 all day
 npm run evaluate -- --id revenue-2025
 npm run evaluate -- --min 85         # exit 1 when accuracy is under 85%
+npm run evaluate -- --min-held-out 70  # the same, over the questions the context does not teach
 npm run evaluate -- --json           # the whole run as JSON
 ```
 
@@ -117,8 +133,24 @@ validator and the same read-only connection as any answer, and the two results a
   kept per question, so a sampled run is compared with what each of its questions did
   before, whenever that was.
 
-The command exits 1 when there is a regression or accuracy is under `--min`. That makes it a
-gate: run it before putting a changed context or a new model in service.
+## The gate
+
+The command exits 0 only when the run measured what it was asked to guarantee. It exits 1,
+and says why under `NOT PASSED`, when:
+
+- a question that matched the last time does not match now;
+- accuracy is under `--min`, or held-out accuracy is under `--min-held-out`;
+- a threshold was asked and the figure **could not be measured** (nothing scored, or no
+  held-out question in the run);
+- a reference statement did not run. That question was not measured, so the bank has to be
+  fixed before the run can pass;
+- the bank has a problem (an entry without `sql`, a repeated `id`, a file that is not JSON):
+  the entry concerned was not asked;
+- the run could not be saved, because the next run would have nothing to compare with;
+- `--min` or `--min-held-out` is not a percentage. A threshold that cannot be read stops
+  the run before any question is asked.
+
+Run it before putting a changed context or a new model in service.
 
 ## Running it every night
 
@@ -135,6 +167,7 @@ system instead of in cron:
 | Metric | Meaning |
 |---|---|
 | `rosie_evaluation_accuracy_ratio` | Accuracy of the last run, 0 to 1 |
+| `rosie_evaluation_held_out_accuracy_ratio` | The same, over the held-out questions only |
 | `rosie_evaluation_questions{outcome}` | Questions of the last run by outcome |
 | `rosie_evaluation_wrong_answers{warning}` | Wrong answers by the warning they carried: `flagged`, `not_checked`, `none` |
 | `rosie_evaluation_regressions` | Regressions found by the last run |

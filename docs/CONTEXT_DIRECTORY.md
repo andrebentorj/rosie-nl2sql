@@ -140,7 +140,8 @@ Richer fields improve both the summary and the `describe_table` tool output:
   Certificate call a total that repeats those records wrong; without it (or a declared metric
   that adds the column up) such a total is reported as two possible readings. Leave it off
   for attributes that are legitimately added once per related row (the length of a track per
-  sale). See `docs/CERTIFICATE.md`.
+  sale). `npm run init` lists the columns that look like one in its report and marks none of
+  them: only someone who knows the data can say it. See `docs/CERTIFICATE.md`.
 - **column.enumValues** `{ "void": "cancelled by the user", ... }` — meaning of each code
   (essential for status-like columns).
 - **catalog.metrics** (root level): named business metrics. A value may be free text

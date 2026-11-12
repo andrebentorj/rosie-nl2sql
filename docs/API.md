@@ -207,3 +207,18 @@ Rebuilds the context from its directory and puts it in service without a restart
 (`changed`, `version`, counts of tables, metrics and approved queries), or 422 with the
 reason when the new context does not build, in which case the context in service is
 unchanged. See [OPERATIONS.md](OPERATIONS.md).
+
+## GET /admin/overview and GET /admin/console (the admin token)
+
+`GET /admin/overview` returns, as one read-only JSON document, what an administrator needs to
+see about the assistant in service: engine version, model and database engine, the state of
+the audit trail and of the read-only user, the catalog (tables, columns, which are masked,
+which are declared measures), declared metrics, approved and suspended queries, the last
+evaluation with its two sets, and the numbers of the period with the review queue
+(`?days=7`, 1 to 90). It carries no secret, no connection setting and no prompt text, and a
+masked column appears by name only.
+
+`GET /admin/console` is a page that shows that document. The page holds no data: it asks
+for the admin token, keeps it for the browser tab, and calls `/admin/overview`. Both routes
+answer 404 until `ROSIE_ADMIN_TOKEN` is set, and `ROSIE_API_TOKEN` opens neither. See
+[OPERATIONS.md](OPERATIONS.md).
