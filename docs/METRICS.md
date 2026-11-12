@@ -74,11 +74,12 @@ How it is computed, by `query_metric`:
   tool refuses and says which side could not reach it.
 - A filter asked for in the question applies to both sides.
 
-Two limits. When the two sides are computed separately and broken down by a column that
-holds nulls, the rows where that column is null show no ratio. And the certificate reports
-such a statement as `NOT_CHECKED` when a side needed a join, because its fan-out check does
-not look inside a derived table: the statement is safe by the way it is built, and the
-certificate does not vouch for what it did not inspect.
+One limit. When the two sides are computed separately and broken down by a column that
+holds nulls, the rows where that column is null show no ratio.
+
+The certificate checks each side on its own: a side that needed a join is probed for
+repeated rows like any other statement, so a compiled ratio normally comes back with
+`CHECKS_PASSED` and not merely with the promise that it was built safely.
 
 ## What the engine does with it
 

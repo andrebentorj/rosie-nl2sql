@@ -46,7 +46,7 @@ The names changed in version 1.0.1: `VERIFIED` became `CROSS_CHECKED`, `UNVERIFI
 
 | Check (`id`) | Detects | Applies when | Does not cover |
 |---|---|---|---|
-| `fanout` | A join that repeats the rows being summed | `SUM` or `AVG` over a join, of a column or of an expression over columns of one table (`SUM(il.UnitPrice * il.Quantity)`), bare or wrapped (`ROUND(SUM(x), 2)`), qualified or not, wherever that table sits in `FROM`, with or without `GROUP BY`. Each aggregated table is compared with its own primary key | A total mixing columns of several tables (`SUM(a.x * b.y)`); joins inside a CTE or subquery; tables without a single-column primary key. These are reported as `NOT_CHECKED` |
+| `fanout` | A join that repeats the rows being summed | `SUM` or `AVG` over a join, of a column or of an expression over columns of one table (`SUM(il.UnitPrice * il.Quantity)`), bare or wrapped (`ROUND(SUM(x), 2)`), qualified or not, wherever that table sits in `FROM`, with or without `GROUP BY`. Each aggregated table is compared with its own primary key. The same holds inside a `WITH` body, a derived table, a `UNION ALL` branch or an uncorrelated subquery, as long as that inner statement reads catalog tables directly: it is probed on its own and its result is reported as "Inside a subquery of this answer" | A total mixing columns of several tables (`SUM(a.x * b.y)`); an inner statement that reads a `WITH` name or a derived table, or a correlated subquery, because out of its place it would count other rows; more than two such inner statements; tables without a single-column primary key. These are reported as `NOT_CHECKED` |
 | `empty` | A filter on a value that does not exist (`City = 'Oporto'` when the data says `Porto`), and lists the real values | The result is empty or zero and the statement filters by equality or a pattern | Only the first eligible filter is probed |
 | `coverage` | A filter that keeps every row, so probably is not filtering what was meant | The statement has a `WHERE` | A filter that legitimately keeps everything is still reported (about 5% of correct answers in our benchmark) |
 | `period` | A date range that runs past the last record, or a "last N months" question answered over an old fixed range | The statement bounds a date column | Gaps inside the range; several date columns |
@@ -54,8 +54,9 @@ The names changed in version 1.0.1: `VERIFIED` became `CROSS_CHECKED`, `UNVERIFI
 
 ### The second derivation (`crossCheck`)
 
-For an answer that is one number from one aggregate over a join, Rosie computes the number
-again over the distinct records of the table the aggregated column belongs to, and compares.
+For an answer that is one number from one aggregate over a join, or one such number per
+group (`GROUP BY`), Rosie computes it again over the distinct records of the table the
+aggregated column belongs to, and compares.
 
 - **`SUM` and `AVG`.** Summing a column of table T over rows a join has repeated is wrong
   whatever the question was. Agreement gives `CROSS_CHECKED`; disagreement gives
@@ -63,9 +64,16 @@ again over the distinct records of the table the aggregated column belongs to, a
 - **`COUNT`.** Counting joined rows (order lines) and counting distinct records (orders) are
   both legitimate numbers, and nothing in the statement says which was meant. Rosie reports
   the two counts as a note (`FLAGGED` when they differ) and never rules that one is wrong.
-- **Not attempted** for `GROUP BY` results, several aggregates, an aggregate wrapped in
-  another function, or a result of zero (two routes agreeing on zero prove nothing). The
-  `fanout` check covers the first three.
+- **`GROUP BY`.** Every group shown in the answer is looked up in the re-derived result, up
+  to 500 groups. One group that differs makes the answer `CONTRADICTED` (or a grain note for
+  a `COUNT`), and the detail names up to three groups with both figures. `crossCheck.groups`
+  carries `compared`, `differing` and `examples`; `primary` and `alternative` are then the
+  figures of the first group that differs. If the second derivation does not return a group
+  of the answer, nothing is endorsed: the answer is `NOT_CHECKED`.
+- **Not attempted** for several aggregates in one statement, an aggregate wrapped in another
+  function, a `GROUP BY` with `HAVING` or with grouping columns the answer does not show, or
+  a result of zero (two routes agreeing on zero prove nothing). The `fanout` check covers
+  the first two.
 
 It is on by default and costs one extra read-only query on the answers it applies to.
 `AI_CROSS_CHECK=false` turns it off.
@@ -97,8 +105,9 @@ tool-call and query budgets. `AI_CERTIFICATE_REPAIR=false` turns it off.
 | `reason` | Meaning |
 |---|---|
 | `shape_not_covered` | A total over a join in a form the fan-out check does not cover |
-| `union_branches` | The statement combines queries with `UNION ALL`. The checks look at the outer statement only, so a problem inside one of the combined queries would not have been detected |
+| `union_branches` | The statement combines queries with `UNION ALL`. Fan-out is probed inside each branch, but the other checks (filter values, coverage, period) look at the outer statement only |
 | `column_owner_unknown`, `no_single_primary_key`, `no_independent_route`, `rewrite_failed` | The second derivation could not be built for this statement |
+| `groups_not_matched`, `too_many_groups` | The second derivation of a `GROUP BY` answer did not return every group of the answer, or the answer has more groups than it compares |
 | `probe_failed` | A verification query could not be run |
 | `probe_budget` | More verification queries were needed than one answer may run |
 | `sql_not_parsed`, `checks_failed` | The statement could not be analysed, or the checks stopped on an internal error |

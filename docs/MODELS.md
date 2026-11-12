@@ -31,8 +31,11 @@ question right out of 110, which is noise.
 
 Read these numbers as a comparison between models, not as accuracy you will get:
 
-- **The sample is easier than the whole set.** On all 500 questions `gpt-6-luna` scored 54.4%
-  (`docs/BIRD.md`); on these 110 it scores 70.9%. The other two have not been run on all 500.
+- **The sample and the whole set.** On all 500 questions `gpt-6.1-terra` scored 85.8% with
+  version 1.10.0 (`docs/BIRD.md`), against 86.4% on these 110: for that model the sample was
+  representative. `gpt-6-luna` scored 54.4% on all 500, but with an older version of the
+  engine, so that figure and its 70.9% here are not the same measurement. `gpt-6-sol` and
+  `gpt-6.1-sol` have not been run on all 500.
 - **One pass, 110 questions.** A difference of three or four questions is noise.
 - **No context.** A deployed Rosie has column descriptions, declared metrics and approved
   queries, which move accuracy more than the model does on a schema with obscure names.

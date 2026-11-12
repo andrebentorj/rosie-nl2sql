@@ -145,9 +145,34 @@ certificate verdict.
 
 ## Other models
 
-The run above uses the cheapest model on the list. On a 110-question sample of the same
-benchmark, with version 1.1.0, `gpt-6.1-terra` scores 86.4% where `gpt-6-luna` scores 70.9%
-(`docs/MODELS.md`). The full 500 questions have only been run with `gpt-6-luna`.
+The run above uses the cheapest model on the list. The same 500 questions with a stronger
+one, 2026-11-12, model `gpt-6.1-terra`, version 1.10.0, PostgreSQL 17, one pass, cross-check
+enabled:
+
+| | |
+|---|---|
+| **Execution accuracy** | **429 of 500 (85.8%)** |
+| Wrong answers | 71 |
+| Asked for clarification, timed out or gave no answer | 0 |
+| Simple / moderate / challenging | 7 of 8 / 27 of 32 / 395 of 460 |
+| Lowest and highest database | `debit_card_specializing` 9 of 14 (64.3%), `european_football_2` 30 of 31 (96.8%) |
+| Wrong answers the certificate flagged | 6 of 71 (8.5%) |
+| Correct answers flagged anyway (false alarms) | 16 of 429 (3.7%) |
+| Answers marked `CROSS_CHECKED` | 2, none of them wrong |
+| Answers marked `NOT_CHECKED` | 62, of which 5 wrong |
+| Median time per question | 7.1 s |
+| Tokens, in and out | 4.82 M and 0.13 M |
+| Cost of the run at list price | about US$ 5.50, an upper bound that ignores the discount on cached input |
+
+Two things this run does not say. It is not a like-for-like comparison of the two models: the
+`gpt-6-luna` run above was made two days earlier with an older version of the engine, and the
+engine changed in between (among other things it now asks once for the execution of a
+statement the model only wrote out). And it confirms what the first run showed about the
+certificate: on this benchmark the wrong answers are misread questions, and it flagged 6 of
+71. The certificate checks the calculation, not the reading of the question.
+
+The 110-question sample in `docs/MODELS.md` had put `gpt-6.1-terra` at 86.4%; the full set
+gives 85.8%.
 
 ## Not done
 

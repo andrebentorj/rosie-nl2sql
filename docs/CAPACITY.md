@@ -127,7 +127,8 @@ How the shared quota behaves:
   same key the quota uses, for about two windows.
 
 The concurrency limit stays per process on purpose: it protects the process, and capacity is
-meant to grow with replicas. The quotas of the MCP transport are also still per process.
+meant to grow with replicas. The MCP transport follows the same setting: its quotas per
+caller are shared too, under their own counters, so the two front doors still count apart.
 
 People do not ask continuously. A person reading an answer and typing the next question
 sends one every minute or two at most, so a process that carries 5 answers per second serves

@@ -77,6 +77,9 @@ Response `200`:
 - `metric` (not shown above) is `null` unless the statement was compiled by the engine from a
   declared metric; then it carries the metric's `name`, `expression`, `table`, the
   `dimensions` and `filters` used and the `joins` added (`docs/METRICS.md`).
+- `certificate.crossCheck`, when present, carries the second derivation: `verdict`, a sentence
+  in `detail`, and the two figures in `primary` and `alternative`. For a `GROUP BY` answer it
+  also has `groups` (`compared`, `differing`, up to three `examples`).
 - `certificate.repair`, when present, records that the checks flagged a first query and the
   model was asked once to correct it (`docs/CERTIFICATE.md`).
 - `answerHandle` is the signed ticket for the follow-up routes below; it expires after 15

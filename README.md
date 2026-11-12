@@ -64,8 +64,9 @@ reproduce: [docs/BENCHMARK.md](docs/BENCHMARK.md).
 11 databases, context built from the schema alone) Rosie scores 54.4% execution accuracy on
 PostgreSQL, against the 51.8% baseline the dataset card lists for the same model. There the
 certificate flagged 10 of 214 wrong answers: almost all of them were misread questions, which
-it does not catch. Accuracy follows the model: on a 110-question sample of the same benchmark,
-`gpt-6-luna` gets 71% and `gpt-6.1-terra` 86% ([docs/MODELS.md](docs/MODELS.md)).
+it does not catch. Accuracy follows the model: on the same 500 questions `gpt-6.1-terra`
+scores 85.8%, at about one US cent per question ([docs/BIRD.md](docs/BIRD.md),
+[docs/MODELS.md](docs/MODELS.md)).
 
 The benchmark page also lists what went wrong, including a hole in the injection filter that
 this benchmark found and that is now fixed. The numbers come from one schema and one model;

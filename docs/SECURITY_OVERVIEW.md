@@ -145,10 +145,10 @@ validator is fixed together with a regression case in the security suite. See `S
 
 - **No certification.** There is no SOC 2 or ISO 27001 report, and no penetration test by a
   third party yet. The security suite and its results are available on request.
-- **Shared rate limits are opt-in and cover the HTTP routes.** With
-  `ROSIE_RATE_LIMIT_STORE=database` the hourly and daily quotas are one number for every
-  replica, kept in the engine database. Without it each replica counts separately. The
-  quotas of the MCP transport and the concurrency limit are per process in both cases.
+- **Shared rate limits are opt-in.** With `ROSIE_RATE_LIMIT_STORE=database` the hourly and
+  daily quotas of the HTTP routes and of the MCP transport are one number for every replica,
+  kept in the engine database. Without it each replica counts separately. The concurrency
+  limit is per process in both cases.
 - **No licence key and no seat enforcement.** Use is governed by the agreement.
 - **No built-in secret manager integration.** Secrets are environment variables; inject them
   from your own secret store.
