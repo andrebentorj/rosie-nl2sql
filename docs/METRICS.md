@@ -37,6 +37,49 @@ A structured metric whose expression, table or filters cannot be parsed stops th
 startup: a definition the engine cannot check is worse than none, because people would
 believe it is being enforced.
 
+### A ratio of two metrics
+
+An average ticket, a share, units per order: one declared metric divided by another.
+
+```json
+"metrics": {
+    "revenue":        { "expression": "SUM(orders.total)", "table": "orders" },
+    "order_count":    { "expression": "COUNT(orders.id)", "table": "orders" },
+    "paid_orders":    { "expression": "COUNT(orders.id)", "table": "orders", "filters": [ "orders.status = 'paid'" ] },
+    "units":          { "expression": "SUM(order_items.qty)", "table": "order_items" },
+
+    "average_ticket": { "ratio": { "numerator": "revenue", "denominator": "order_count" }, "synonyms": [ "ticket" ] },
+    "paid_share":     { "ratio": { "numerator": "paid_orders", "denominator": "order_count" } },
+    "units_per_order": { "ratio": { "numerator": "units", "denominator": "order_count" } }
+}
+```
+
+A ratio has no `expression`, `table` or `filters` of its own: they come from the two metrics
+it names, each of which must be a plain metric with a `table`. It may carry `description`,
+`synonyms` and `dimensions`. A ratio of a ratio is refused at startup, as is a side that is
+not a declared metric.
+
+How it is computed, by `query_metric`:
+
+- **Same table and same required filters** (`average_ticket`): one statement that divides the
+  two aggregates over the same rows.
+- **Different filters or different tables** (`paid_share`, `units_per_order`): each side is
+  computed on its own, with its own table, joins and required filters, and the two results
+  are joined on the breakdown columns. Each aggregate runs over its own rows only, so a
+  ratio cannot be inflated by the other side's join. The denominator drives the join: where
+  it has no rows the ratio has no value.
+- The division never truncates to an integer, and a denominator of zero gives no value
+  instead of an error.
+- A breakdown or a filter must be reachable, many-to-one, from **both** sides. Otherwise the
+  tool refuses and says which side could not reach it.
+- A filter asked for in the question applies to both sides.
+
+Two limits. When the two sides are computed separately and broken down by a column that
+holds nulls, the rows where that column is null show no ratio. And the certificate reports
+such a statement as `NOT_CHECKED` when a side needed a join, because its fan-out check does
+not look inside a derived table: the statement is safe by the way it is built, and the
+certificate does not vouch for what it did not inspect.
+
 ## What the engine does with it
 
 1. **Prompt.** Each metric is rendered into the catalog block of the system prompt with its
@@ -103,8 +146,8 @@ The compiled statement then runs like any other: validator, row cap, row policie
 pool, Answer Certificate. The answer carries `metric` (name, formula, base table, dimensions,
 filters, joins) and the widget shows "Declared metric: revenue = SUM(Invoice.Total)".
 
-What it does not do: ratios between two metrics, metrics over a join declared inside the
-metric, self-referencing tables, and custom time windows ("trailing 12 months"). For those
+What it does not do: metrics over a join declared inside the metric, self-referencing
+tables, ratios of ratios, and custom time windows ("trailing 12 months"). For those
 the model writes the query and the checks above apply.
 
 **When the tool is offered.** Only when the question names a declared metric, by its name or
@@ -138,15 +181,26 @@ What is translated:
 | Source | Becomes |
 |---|---|
 | dbt `simple` metric over a `sum`, `count`, `count_distinct`, `average`, `min`, `max` or `sum_boolean` measure | `expression` and `table` |
-| dbt `ratio` metric | `numerator / denominator` |
+| dbt `ratio` metric over two measures of one table, with no filter of their own | One expression, `numerator / denominator` |
+| Any other dbt `ratio` metric (sides in different tables, a side that names a metric, a filter on one side) | A ratio of two declared metrics. A side that is a bare measure or carries a filter becomes a metric of its own, named `<ratio>_numerator` or `<ratio>_denominator`, so its filter stays on its side |
 | dbt filter written with `{{ Dimension('entity__name') }}` | A required filter on the real column |
 | dbt `label`, Cube `title` | A synonym |
+| dbt entities: a `foreign` entity in one model and the `primary` entity of the same name in another | A many-to-one relationship in the catalog, and the primary key of a table that declares none |
+| dbt and Cube dimensions | The `dimensions` of each metric: those of its own model or cube first, then those of every model or cube it reaches through many-to-one joins |
 | Cube `sum`, `count`, `count_distinct`, `avg`, `min`, `max` measure with its `filters` | `expression`, `table` and required filters |
+| Cube `number` measure written as one measure of the cube divided by another (`{a} / {b}`) | A ratio of the two |
+| Cube `joins` with `many_to_one` or `one_to_many` (`belongs_to`, `has_many`) and a single-column equality | A many-to-one relationship in the catalog, from the side that holds the key |
+
+Relationships and primary keys are only ever added: a relationship the catalog already has is
+left alone, and a table that declares a primary key keeps it. The dry run lists each one as
+`+ join:` or `+ primary key:` before anything is written. Time granularity needs nothing
+imported: any date column can be broken down by `:year`, `:quarter` or `:month`.
 
 What is skipped, each with a message: dbt `derived`, `cumulative` and `conversion` metrics;
 `median` and percentile measures; filters that use `TimeDimension`, `Entity` or `Metric`
-templates; Cube measures of type `number` or that reference other members; cubes defined by a
-SQL query instead of a table; anything on a table that is not in the catalog. A metric whose
+templates; Cube `number` measures in any other form, and measures that reference members of
+another cube; Cube joins that are many-to-many or not a single-column equality; cubes defined
+by a SQL query instead of a table; anything on a table that is not in the catalog. A metric whose
 filter cannot be translated is skipped entirely. Importing it without the filter would turn
 a restricted definition into a broader one and then enforce the wrong thing.
 

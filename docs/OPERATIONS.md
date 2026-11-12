@@ -76,6 +76,41 @@ npm run review -- --approve <messageId> --id revenue-by-country --by "Dana Reyes
 docker kill --signal=HUP rosie                   # the approved query is in service
 ```
 
+## The weekly report
+
+One page for the person who answers for the assistant, built from what the engine already
+records:
+
+```bash
+npm run weekly-report                            # last 7 days, on the terminal
+npm run weekly-report -- --days 30
+npm run weekly-report -- --out report.md         # Markdown, to send or to post
+npm run weekly-report -- --json                  # the same content as data
+npm run weekly-report -- --fail-on-attention     # exit code 1 when something needs a person
+```
+
+It opens with **what needs a person this week**, in this order: answers the second derivation
+contradicted, objects the catalog names and the database no longer has, evaluation questions
+that stopped matching, approved queries past their review date, answers rated down, answers
+that went out with a warning, an error share that is rising, approved queries due for review
+within 30 days, and an evaluation that was never run or is more than 14 days old. A quiet
+week says so.
+
+Then the numbers, each compared with the period before: usage and outcomes, the verdicts of
+the Answer Certificate with the reasons answers went unchecked, the ratings, the ten most
+recent entries of the review queue, the approved queries by review date, the last evaluation,
+and the catalog against the database.
+
+It is read-only and calls no model. It reads the engine tables, the context directory and,
+with the read-only user, the column list of the database (`--no-schema` skips that). From a
+scheduler, inside the container:
+
+```bash
+docker exec rosie node scripts/weekly-report.js --out /app/logs/weekly.md
+```
+
+`npm run audit-report` and `npm run review` remain for the detail behind each line.
+
 ## Schema drift
 
 The catalog is a file. The database keeps changing after it was written. When a column is

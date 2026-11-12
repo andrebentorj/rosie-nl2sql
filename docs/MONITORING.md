@@ -113,6 +113,7 @@ Two ratios are worth a panel even without an alert:
   expects of a counter. With several replicas, scrape each one.
 - The counters say how the service behaves, never whether an answer was right. For that,
   run your own question bank with `npm run evaluate` ([EVALUATION.md](EVALUATION.md)) and
-  work the review queue (`npm run review`).
+  work the review queue (`npm run review`). `npm run weekly-report` puts both next to the
+  usage of the week on one page ([OPERATIONS.md](OPERATIONS.md)).
 - `GET /api/assistant/health` stays public and minimal. Use it for liveness, and the
   metrics endpoint for everything else.
