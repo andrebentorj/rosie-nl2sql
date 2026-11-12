@@ -222,3 +222,19 @@ masked column appears by name only.
 for the admin token, keeps it for the browser tab, and calls `/admin/overview`. Both routes
 answer 404 until `ROSIE_ADMIN_TOKEN` is set, and `ROSIE_API_TOKEN` opens neither. See
 [OPERATIONS.md](OPERATIONS.md).
+
+## POST /admin/approve, /admin/describe, /admin/dismiss (the admin token and the write switch)
+
+The three changes the console can make. They need the admin token **and**
+`ROSIE_ADMIN_WRITE=true`; without the switch they answer 403.
+
+| Route | Body | Effect |
+|---|---|---|
+| `/admin/approve` | `{ "messageId", "id", "by", "reviewBy"?, "question"? }` | The recorded SQL of that answer becomes the approved query `id`. The body carries no SQL: the server reads it from its own record and validates it |
+| `/admin/describe` | `{ "table", "column"?, "description", "by" }` | Rewrites one description in the catalog. An empty description removes it |
+| `/admin/dismiss` | `{ "messageId", "by", "note"? }` | The answer leaves the review queue |
+
+Answers: 200 `{ "ok": true, ... }`; 403 when writing is off; 404 for an unknown answer, table
+or column; 409 when the id exists or the context directory cannot be written; 422 when the
+input is refused or the context would not build with the change, in which case nothing
+changed. See [OPERATIONS.md](OPERATIONS.md).

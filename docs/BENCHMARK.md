@@ -12,50 +12,59 @@ question bank in `contexts/demo/eval/questions/`. Setup is in `demo/README.md`.
 
 ## Latest run
 
-2026-11-12, engine version 1.12.0, model `gpt-6-luna`, cross-check and second attempt enabled,
-one pass over the bank on each engine. Same data, same context directory, same 197 questions.
+2026-11-12, engine version 1.13.0, model `gpt-6-luna`, cross-check and second attempt enabled,
+one pass over the bank on each engine, the three engines at the same time. Same data, same
+context directory, same 197 questions.
 
 | Measure | MySQL 8.4 | PostgreSQL 16 | SQL Server 2022 |
 |---|---|---|---|
-| Questions passed | 193 of 197 (98.0%) | 197 of 197 (100%) | 192 of 197 (97.5%) |
-| Cost of the whole run | US$ 0.14 | US$ 0.15 | US$ 0.14 |
+| Questions passed | 194 of 197 (98.5%) | 190 of 197 (96.4%) | 195 of 197 (99.0%) |
+| Cost of the whole run | US$ 0.14 | US$ 0.15 | US$ 0.15 |
 
 | Category | MySQL | PostgreSQL | SQL Server |
 |---|---|---|---|
-| single-table | 24 / 24 | 24 / 24 | 24 / 24 |
-| aggregations | 24 / 24 | 24 / 24 | 24 / 24 |
-| multi-table-joins | 27 / 28 | 28 / 28 | 26 / 28 |
-| date-filtering | 20 / 20 | 20 / 20 | 19 / 20 |
-| entity-resolution | 18 / 20 | 20 / 20 | 19 / 20 |
-| ranking | 13 / 14 | 14 / 14 | 14 / 14 |
-| ambiguity-handling (must ask instead of guessing) | 12 / 12 | 12 / 12 | 11 / 12 |
+| single-table | 24 / 24 | 23 / 24 | 23 / 24 |
+| aggregations | 24 / 24 | 23 / 24 | 24 / 24 |
+| multi-table-joins | 27 / 28 | 27 / 28 | 28 / 28 |
+| date-filtering | 19 / 20 | 20 / 20 | 20 / 20 |
+| entity-resolution | 19 / 20 | 17 / 20 | 19 / 20 |
+| ranking | 14 / 14 | 14 / 14 | 14 / 14 |
+| ambiguity-handling (must ask instead of guessing) | 12 / 12 | 11 / 12 | 12 / 12 |
 | negative-edge-cases (writes, masked data, injection: must refuse) | 20 / 20 | 20 / 20 | 20 / 20 |
 | poisoned-silent-failures | 35 / 35 | 35 / 35 | 35 / 35 |
 
-**Every question of every run is in the package**: `docs/benchmark-runs/1.12.0-mysql.json`,
-`1.12.0-postgres.json` and `1.12.0-sqlserver.json` hold, per question, what was asked, the
+**Every question of every run is in the package**: `docs/benchmark-runs/1.13.0-mysql.json`,
+`1.13.0-postgres.json` and `1.13.0-sqlserver.json` hold, per question, what was asked, the
 SQL that ran, whether it passed and why not, the certificate verdict, what was flagged or
 skipped and whether a second attempt happened. Every number on this page can be recounted
-from those files (`scripts/benchmark-export.js` writes them from a run).
+from those files (`scripts/benchmark-export.js` writes them from a run). The files of the
+run on 1.12.0, made a few hours earlier, are beside them.
 
-The differences between the three columns are within the run-to-run variation described
-under Limits. One pass at 100% is one pass: the same bank and the same engine gave 98.0% on
-MySQL in the same hour.
+Read the two runs together. On 1.12.0 the same bank gave 193, 197 and 192; on 1.13.0 it
+gave 194, 190 and 195. Nothing in between changed how a question is answered (the changes
+were in the checks), so the movement of PostgreSQL from 197 to 190 and back is what one pass
+of a small model looks like, and a single pass at 100% should be read as that.
 
 The misses:
 
-- **MySQL.** Four: three clarifications the bank did not expect (on "most popular genre", "the
-  States" and "spent the least") and one wrong number, "total
-  purchases by our UK customers" read as a count of invoices instead of their sum. Nothing
-  is structurally wrong with that query, so its certificate read `CHECKS_PASSED`. That is
-  the limit stated in `docs/CERTIFICATE.md`: the checks see the calculation, not the reading
-  of the question.
-- **PostgreSQL.** None in this pass.
-- **SQL Server.** Five as scored, four in fact: three unexpected clarifications, one
-  ambiguous request ("Show the totals") answered without asking, and one right answer marked
-  wrong by a mistake in the bank. The reference query of a new question averaged an integer
-  column, which SQL Server truncates; the engine's answer was the exact one. The reference
-  is fixed and the question passes when run again. The table is left as measured.
+- **MySQL.** Three: two clarifications the bank did not expect ("most popular genre", "the
+  States") and a list of invoices answered as a count and a total.
+- **PostgreSQL.** Seven:
+  - one request to the model provider timed out, and the question went unanswered;
+  - two clarifications the bank did not expect, and one ambiguous request ("Show the
+    totals") answered without asking;
+  - three wrong numbers: a share of revenue answered with the total revenue, "total
+    purchases" read as a count of invoices, and "since January 2020" read as the year 2020.
+    The first two carried `CHECKS_PASSED`: nothing is structurally wrong with those queries,
+    and the checks see the calculation, not the reading of the question
+    (`docs/CERTIFICATE.md`). The third was `FLAGGED`, because the period it filtered on has
+    no data.
+- **SQL Server.** Two: one unexpected clarification and a list of invoices answered as a
+  count and a total.
+
+Two wrong numbers with a clean certificate in 591 answers is the figure to keep from this
+page. It is what "the certificate does not check whether the question was understood" means
+in practice, and it is why evaluation on your own questions (`docs/EVALUATION.md`) exists.
 
 ## Silent wrong answers
 
@@ -65,56 +74,64 @@ only partly covers, a filter that removes nothing. Each question can end three w
 
 | Outcome on 35 poisoned questions | MySQL | PostgreSQL | SQL Server |
 |---|---|---|---|
-| The model avoided the trap and the value matches the truth query | 23 | 22 | 22 |
-| A wrong or partial answer was produced and the Answer Certificate flagged it | 12 | 13 | 13 |
+| The model avoided the trap and the value matches the truth query | 24 | 22 | 23 |
+| A wrong or partial answer was produced and the Answer Certificate flagged it | 11 | 13 | 12 |
 | A wrong answer went out looking fine | 0 | 0 | 0 |
+
+"Silent" here is about the traps, which are built from the error classes the checks cover.
+The two misread questions above are wrong answers that went out with no warning too; they
+are outside this table because no check claims to cover them.
 
 What the certificate said over all 197 questions:
 
 | Verdict | MySQL | PostgreSQL | SQL Server |
 |---|---|---|---|
-| `CHECKS_PASSED` | 105 | 101 | 98 |
-| `CROSS_CHECKED` | 4 | 6 | 6 |
-| `FLAGGED` | 17 | 19 | 19 |
+| `CHECKS_PASSED` | 101 | 101 | 99 |
+| `CROSS_CHECKED` | 6 | 5 | 7 |
+| `FLAGGED` | 19 | 20 | 19 |
 | `CONTRADICTED` | 0 | 0 | 0 |
-| `NOT_CHECKED` | 3 | 3 | 5 |
-| `NOT_APPLICABLE` | 32 | 35 | 35 |
-| Clean answers flagged anyway (false alarms) | 4 of 95 (4.2%) | 6 of 95 (6.3%) | 6 of 93 (6.5%) |
+| `NOT_CHECKED` | 2 | 2 | 4 |
+| `NOT_APPLICABLE` | 35 | 35 | 35 |
+| Clean answers flagged anyway (false alarms) | 7 of 93 (7.5%) | 6 of 93 (6.5%) | 7 of 95 (7.4%) |
 
-Three things this run measured for the first time.
+What these two runs measured for the first time.
 
 - **A total that is meant to repeat is no longer condemned.** Two questions were added for
   it: the catalog price added once per line sold, and the average track length weighted by
-  sales. On every engine the repeated figure went out as the answer, was not sent back for a
-  second attempt, and carried `FLAGGED` with both figures side by side (`GRAIN_DIFFERS`), or
-  `NOT_CHECKED` once where the model wrote the sum over columns of two tables. Up to 1.11.0
-  the same answers were marked `CONTRADICTED`. They are counted above as false alarms, which
-  is the honest name for a warning on a right answer.
-- **The second attempt.** The checks named an actionable defect two times on MySQL and three
-  on PostgreSQL and SQL Server. One (`PZ-011`, an invoice total repeated by a join) was
-  corrected on all three with the value the truth query gives. The others were kept as first
-  answered, with their warning, because the second answer brought no evidence that the
-  defect was gone. No correct answer was replaced.
-- **No `CONTRADICTED` in 591 answers.** The model avoided or corrected every repeated total
-  on a column the demo context declares. The verdict is covered by the test suites on all
-  three engines, not by this run.
-
-**Two defects this run found, both fixed after it.** A question was added that asks for the
-join inside a `WITH`. On MySQL the probes of the certificate dropped the `WITH` and then
-named a table that did not exist; on SQL Server the parser could not read back the bracketed
-`WITH` name the engine itself had written. In both cases the answer was right and went out
-`NOT_CHECKED`, which is the designed behaviour for a check that cannot run, and also a gap:
-every statement with a `WITH` on SQL Server was going out unchecked. Both are fixed in
-1.13.0 and covered by tests on real PostgreSQL and SQL Server. The numbers above are from
-before the fix and are left as measured; the three engines have not been run again in full
-on 1.13.0.
+  sales. In both runs, on every engine, the repeated figure went out as the answer, was not
+  sent back for a second attempt, and carried `FLAGGED` with both figures side by side
+  (`GRAIN_DIFFERS`), or `NOT_CHECKED` on MySQL where the model wrote the sum over columns of
+  two tables. Up to 1.11.0 the same answers were marked `CONTRADICTED`. They are counted
+  above as false alarms, which is the honest name for a warning on a right answer, and they
+  are why that rate is higher than in the runs before 1.12.0.
+- **The second attempt.** The checks named an actionable defect three times on MySQL and
+  SQL Server and five times on PostgreSQL. Eight of those eleven answers were corrected, and
+  three were kept as first answered, with their warning, because the second answer brought
+  no evidence that the defect was gone. Ten of those eleven questions passed, with the value
+  the truth query gives where there is one; the eleventh is the ambiguous request answered
+  without asking, which fails for that reason whichever attempt is kept.
+- **No `CONTRADICTED` in either run.** The model avoided or corrected every repeated total
+  on a column the demo context declares. That verdict is covered by the test suites on all
+  three engines, not by this benchmark.
+- **A join inside a `WITH`.** The run on 1.12.0 added a question that asks for it and found
+  two defects: on MySQL and PostgreSQL the probes of the certificate dropped the `WITH` and
+  named a table that did not exist, and on SQL Server the parser could not read back the
+  bracketed `WITH` name the engine itself had written, so every statement with a `WITH` went
+  out `NOT_CHECKED` there. Both were fixed in 1.13.0. In this run the same question came out
+  `CHECKS_PASSED` on MySQL and PostgreSQL and `CROSS_CHECKED` on SQL Server.
 
 Correct answers that carried a warning are accurate statements about the data in almost
 every case (a filter the model added that removes no rows, a period that reaches past the
-last sale). They are counted as false alarms because the answer itself was right.
+last sale, the two grains of a total). They are counted as false alarms because the answer
+itself was right.
 
 ## Earlier runs
 
+- **1.12.0, 2026-11-12, 197 questions.** MySQL 193 (98.0%), PostgreSQL 197 (100%), SQL Server
+  192 (97.5%); of 35 traps, 23, 22 and 22 avoided and 12, 13 and 13 flagged, none silent. One
+  of the SQL Server misses was a mistake in the bank: the reference query of a new question
+  averaged an integer column, which SQL Server truncates. The reference was fixed before the
+  run on 1.13.0.
 - **1.0.0, 2026-11-10, 194 questions.** MySQL 191 (98.5%), PostgreSQL 187 (96.4%), SQL Server
   192 (99.0%); of 34 traps, 21, 20 and 21 avoided and 13, 14 and 13 flagged, none silent.
   That run used the earlier verdict names, and it exposed a hole in the injection filter:
@@ -170,7 +187,7 @@ the engine could not.
 ## Limits of these numbers
 
 - **One schema, one model, one pass.** Results vary a little from run to run: the same bank
-  has scored between 97.4% and 98.5% on consecutive MySQL runs and between 96.4% and 97.9%
+  has scored between 97.4% and 98.5% on consecutive MySQL runs and between 96.4% and 100%
   on PostgreSQL, and which questions miss changes between runs. A different schema, with weaker
   descriptions in its context, will score lower until its context is tuned.
 - **The bank was written by the team that builds the engine.** It was calibrated once against
@@ -178,8 +195,8 @@ the engine could not.
   The 35 traps are built from exactly the error classes the certificate has checks for, and
   the demo context helps the model avoid some of them before any check runs: its prompt says
   not to sum `Invoice.Total` after joining `InvoiceLine`, and its project file states where
-  the data ends. In 22 or 23 of the 35 the model avoids the trap, so the certificate is
-  exercised on 12 or 13 questions per engine. "0 went out without a warning" is a true
+  the data ends. In 22 to 24 of the 35 the model avoids the trap, so the certificate is
+  exercised on 11 to 13 questions per engine. "0 went out without a warning" is a true
   statement about those, and a small sample.
   Treat it as a regression suite you can inspect and extend, not as an independent audit.
   For questions and reference answers written by someone else, see `docs/BIRD.md`: 54.4% on

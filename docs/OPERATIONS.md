@@ -113,9 +113,9 @@ docker exec rosie node scripts/weekly-report.js --out /app/logs/weekly.md
 
 ## The administration console
 
-`https://<your host>/api/assistant/admin/console` is a read-only page for the person who
-answers for the assistant. It needs `ROSIE_ADMIN_TOKEN` to be set on the server and asks for
-it when it opens.
+`https://<your host>/api/assistant/admin/console` is a page for the person who answers for
+the assistant. It needs `ROSIE_ADMIN_TOKEN` to be set on the server and asks for it when it
+opens. It is read-only unless `ROSIE_ADMIN_WRITE=true` is also set.
 
 | View | What it shows |
 |---|---|
@@ -125,10 +125,42 @@ it when it opens.
 | Metrics and queries | Declared metrics and how each is answered, approved queries with who approved them and the review date, and the suspended ones with the reason |
 | Evaluation | The last `npm run evaluate`: held-out accuracy, the taught set, wrong answers by the warning they carried, regressions, and the questions not matched |
 
-What it does not do, on purpose, in this version: it changes nothing. Approving a query is
-still `npm run review`, editing a description is still the context files and a reload. A
-page that can only read cannot be used to change what the assistant may answer, so the
-admin token opening it is a smaller risk than the same token opening an editor.
+### Changes from the console
+
+With `ROSIE_ADMIN_WRITE=true`, three things can be done from the page, and nothing else:
+
+| Action | Where | What it does |
+|---|---|---|
+| Approve as a query | To review | The answer's question and SQL become an approved query, with the id you choose, your name, today's date and an optional review date. The server takes the SQL from its own record of that answer, validates it against the catalog, and writes it to `verified-queries.json` |
+| Looked at, nothing to approve | To review | The answer leaves the queue. Recorded with your name in `review-dismissed.json`, beside the audit file |
+| Edit a description | Catalog | Rewrites the `description` of one table or column in `schema-catalog.json` (500 characters at most) |
+
+What it cannot change, on purpose: which tables and columns the assistant may read, the
+masked columns, the declared measures and metrics, the row policies and the prompt. Those
+decide what leaves the database, and they stay in files reviewed where the context is kept.
+
+Each change to the context is applied the same way: the new file is written beside the old
+one and renamed over it, the context is rebuilt exactly as a reload does, and if it does not
+build the old file is put back and the context in service is untouched. A change that is
+accepted is in service at once. Every attempt, accepted or refused, goes to the audit file
+as a `rosie_admin_change` record and to the log, with the name given, the address and the
+time.
+
+Things to know before turning it on:
+
+- **The context directory must be writable by the server.** The installation steps mount it
+  read-only (`:ro`), and with that mount the first and third actions are refused with a
+  message saying so. Remove `:ro` only if you want changes from the console.
+- **The files change where the server runs.** If the context is versioned somewhere else,
+  bring the change back there, or the next deploy overwrites it. The file keeps its
+  indentation, but a catalog written with objects on one line is rewritten one field per
+  line the first time it is saved.
+- **More than one replica.** The change is applied by the replica that received it. The
+  others pick it up on their next reload (`docker kill --signal=HUP`), and only if they
+  share the same context directory.
+- **The name is what the person typed.** The admin token says the request is allowed, not
+  who sent it. For a record tied to an identity, keep the console behind your access proxy
+  and its logs.
 
 Put it behind your VPN or your reverse proxy's access rules, like any administration page.
 The page is served with a content security policy that lets it talk to its own origin only,
@@ -181,6 +213,7 @@ missing.
 |---|---|---|
 | `ROSIE_SCHEMA_DRIFT_INTERVAL_MS` | `3600000` | How often the comparison runs. Minimum one minute. `0` turns it off |
 | `ROSIE_ADMIN_TOKEN` | unset | Opens `POST /api/assistant/admin/reload`, `GET /api/assistant/admin/overview` and the console page. Unset, those routes answer 404 and the reload signal still works |
+| `ROSIE_ADMIN_WRITE` | `false` | With the admin token, allows the three changes of the console (approve, dismiss, edit a description). Off, the console is read-only and those routes answer 403 |
 
 ### Limits
 
