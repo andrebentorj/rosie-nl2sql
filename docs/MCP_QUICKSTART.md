@@ -29,7 +29,7 @@ From the repository root:
 npm run test:mcp
 ```
 
-Expect `ALL 16 MCP CASES PASS`. This drives the real server the same way Claude Desktop
+Expect a last line reading `ALL ... MCP CASES PASS`. This drives the real server the same way Claude Desktop
 will, so if it passes, the problem in any later step is configuration, not the server.
 
 ## Step 2 — Find your node binary

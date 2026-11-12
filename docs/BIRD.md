@@ -116,8 +116,8 @@ Where this differs from the official evaluation script, in the direction it coul
   This is slightly more lenient.
 - **A clarification counts as wrong.** The instruction forbids asking, and the model asked
   14 times anyway.
-- **The input length limit was raised** (`AI_MAX_INPUT_LENGTH=6000`). The default of 500
-  characters refuses the longest questions with their evidence.
+- **The input length limit was raised** (`AI_MAX_INPUT_LENGTH=6000`). The default at the time, 500
+  characters, refused the longest questions with their evidence.
 - **The statement timeout was 30 seconds**, and the engine's row cap was lifted for the
   comparison only, so long lists are compared whole.
 - **PostgreSQL 17**, restored from the official dump files into a stock `postgres:17`

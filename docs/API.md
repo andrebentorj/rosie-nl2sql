@@ -29,7 +29,7 @@ Ask a question in natural language.
 }
 ```
 
-- `question` is required, 3 to `AI_MAX_INPUT_LENGTH` (default 500) characters. Raw SQL,
+- `question` is required, 3 to `AI_MAX_INPUT_LENGTH` (default 2000) characters. Raw SQL,
   write intent, requests for credentials and prompt-injection patterns are refused before any
   model call.
 - `user` is **audit and personalization only**, never authorization.
@@ -88,6 +88,41 @@ Errors: `400` invalid body or question, `401` bad token, `429` rate limited (`Re
 `503` disabled / security hold / busy / audit policy, `500` engine error (audited as
 `status=error`).
 
+### Streaming the answer
+
+Add `"stream": true` to the body and the response is a server-sent event stream
+(`Content-Type: text/event-stream`) instead of one JSON document:
+
+```
+event: progress
+data: {"step":1,"message":"Reading the question and planning the query"}
+
+event: progress
+data: {"step":2,"message":"Ran query 1 (12 rows)"}
+
+event: progress
+data: {"step":4,"message":"Verifying the answer (Answer Certificate)"}
+
+event: result
+data: { ...the same body a plain /ask returns... }
+```
+
+- `progress` events arrive while the engine works: each model turn, each query that ran, the
+  certificate, a second attempt when the checks ask for one. They carry no data from the
+  database.
+- Exactly one `result` event ends a stream that succeeded; an `error` event (`{ "error": "…" }`)
+  ends one that did not. Lines starting with `:` are keep-alives and can be ignored.
+- **The answer text is not streamed word by word, on purpose.** An answer is released only
+  after its checks have run, so nothing is shown that the certificate then contradicts. What
+  streams is the work, not the conclusion.
+- Refusals that happen before the engine starts (invalid body, rate limit, bad token, security
+  hold) are still plain JSON with their HTTP status, so check the status before reading events.
+- Behind a proxy, turn response buffering off for this route. The response already carries
+  `X-Accel-Buffering: no` and `Cache-Control: no-cache, no-transform`.
+
+The widget asks for the stream by itself and falls back to the plain response when the
+browser or the backend does not offer one.
+
 ## POST /export
 
 Re-run a previous answer's validated SQL past the display cap (up to 50 000 rows).
@@ -131,11 +166,13 @@ Metadata the widget needs before the first question, plus the security gate stat
 {
   "name": "Sales", "fullName": "…", "description": "…", "welcomeMessage": "…",
   "suggestions": [ "…" ], "aiDisclaimer": "…", "governance": { "owner": "…" }, "theme": null,
+  "maxInputLength": 2000,
   "securityHold": false, "securityCode": null, "securityMessage": null, "supportContact": null
 }
 ```
 
-`securityHold: true` means the read-only user has more than SELECT privileges and every
+`maxInputLength` is the longest question the server accepts (`AI_MAX_INPUT_LENGTH`); the
+widget stops the typing there. `securityHold: true` means the read-only user has more than SELECT privileges and every
 question is refused until an administrator fixes the grants.
 
 ## GET /health (public)

@@ -97,6 +97,7 @@ tool-call and query budgets. `AI_CERTIFICATE_REPAIR=false` turns it off.
 | `reason` | Meaning |
 |---|---|
 | `shape_not_covered` | A total over a join in a form the fan-out check does not cover |
+| `union_branches` | The statement combines queries with `UNION ALL`. The checks look at the outer statement only, so a problem inside one of the combined queries would not have been detected |
 | `column_owner_unknown`, `no_single_primary_key`, `no_independent_route`, `rewrite_failed` | The second derivation could not be built for this statement |
 | `probe_failed` | A verification query could not be run |
 | `probe_budget` | More verification queries were needed than one answer may run |

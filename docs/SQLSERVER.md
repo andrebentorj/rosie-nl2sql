@@ -73,7 +73,7 @@ allocate a very large string). The list is `ALLOWED_FUNCTIONS` in
 | `sys.` objects and `INFORMATION_SCHEMA` | System catalogs |
 | Functions in `FROM`, temporary tables (`#name`) | They do not appear in the table list, so the table allowlist never sees them |
 | Schema-qualified functions | The allowlist is a set of bare names inside one schema |
-| `UNION`, `INTERSECT`, `EXCEPT`, `SELECT INTO` | Not needed for analytics; each widens what a statement can reach |
+| `UNION`, `INTERSECT`, `EXCEPT`, `SELECT INTO` | Not needed for analytics; each widens what a statement can reach. `UNION ALL` alone is accepted, inside a derived table or `WITH` body, with every branch validated as a statement of its own (`AI_UNION_ALL=false` refuses it too) |
 | `FOR XML`, `FOR JSON`, table hints (`WITH (NOLOCK)` and the rest) | Change the shape of the result or the locking behaviour |
 | Backslashes | Parser and server can disagree on where a line ends |
 

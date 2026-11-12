@@ -40,7 +40,7 @@ both figures and marks the answer `CONTRADICTED`.
 | **Per-tenant isolation** | Row policies filter every query by the caller's verified identity (JWT). The filter is applied by the engine, not by the model, and cannot be talked around. |
 | **Approved queries** | A query a person reviewed for a question is run unchanged when the question comes back, with only the values swapped, and the answer says who approved it. The checks cover the calculation; this covers the meaning. |
 | **Metrics with one definition** | Declare "revenue" once, or import it from dbt or Cube. For a declared metric the engine writes the query itself, formula and joins, so it cannot be inflated by a join; a query the model writes on its own is checked against the definition. |
-| **Two ways in** | A chat widget (one script tag, white-label) and an MCP server for Claude, Cursor and other AI clients. |
+| **Two ways in** | A chat widget (one script tag, white-label) and an MCP server for Claude, Cursor and other AI clients. The widget shows each step while the answer is prepared and draws the result as bars or lines, chosen from its shape. |
 | **Runs where your data is** | Your server, your database, your model key. Works with any OpenAI-compatible endpoint, including a model you host. |
 
 ## Measured, on public data
@@ -169,7 +169,8 @@ directory. The contract is in [contexts/example/README.md](docs/CONTEXT_DIRECTOR
 - A dedicated read-only database user, audited at startup and every 15 minutes. If it gains
   a privilege beyond SELECT, Rosie stops answering.
 - SQL validated on its syntax tree before it runs: SELECT only, allowlisted tables and
-  columns, no system catalogs, no set operations, no dangerous functions. On PostgreSQL
+  columns, no system catalogs, no dangerous functions. The one set operation accepted is
+  `UNION ALL` inside a derived table, with every branch validated on its own. On PostgreSQL
   and SQL Server, functions are allowlisted.
 - Masked columns enforced by the validator, in every tool, on every engine.
 - Row policies applied to every read, including exports and the certificate's own probes.

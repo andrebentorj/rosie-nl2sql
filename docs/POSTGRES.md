@@ -67,7 +67,7 @@ allocate a gigabyte). The list is `ALLOWED_FUNCTIONS` in
 | Any name starting with `pg_`, and `information_schema` | System catalogs are always on the search path |
 | Schema-qualified tables, columns and functions | The allowlist is a set of bare names inside one schema |
 | Backslashes, dollar-quoting (`$$...$$`), `$1` | Parser and server can disagree on where a string ends |
-| `UNION`, `INTERSECT`, `EXCEPT`, `SELECT INTO`, locking reads | Not needed for analytics; each widens what a statement can reach |
+| `UNION`, `INTERSECT`, `EXCEPT`, `SELECT INTO`, locking reads | Not needed for analytics; each widens what a statement can reach. `UNION ALL` alone is accepted, inside a derived table or `WITH` body, with every branch validated as a statement of its own (`AI_UNION_ALL=false` refuses it too) |
 | Casts to `regclass`, `oid` and other system types | Catalog lookups in disguise |
 | `current_user`, `session_user`, `current_schema` and bare `user` | Session information |
 | `NATURAL JOIN`, `OFFSET` without `LIMIT` | The SQL parser reads them differently from the server |
