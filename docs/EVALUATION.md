@@ -49,6 +49,16 @@ purpose: when a held-out question is answered wrong and you approve its correcti
 to the first set, so add a new held-out question in its place. `npm run evaluate -- --list`
 shows the set of each question.
 
+A bank entry may also carry `"set": "held_out"` or `"set": "regression"` to say where it
+belongs, and `"expectEmpty": true` when no rows IS the right answer. Without that mark, a
+reference that returns no rows is not scored: two unrelated statements both return nothing.
+A question that is a near copy of a taught one ("What is our total revenue?" next to "What
+is the total revenue?") counts as taught.
+
+How results are compared: a reference of a single figure is matched by an answer of a single
+figure, or by the answer's column of the same name. A value with leading zeros (`000123`) is
+a code and is compared as text.
+
 Thirty to fifty questions that your teams really ask are worth more than five hundred
 invented ones. Start with the questions of the pilot.
 
@@ -142,6 +152,10 @@ and says why under `NOT PASSED`, when:
 - accuracy is under `--min`, or held-out accuracy is under `--min-held-out`;
 - a threshold was asked and the figure **could not be measured** (nothing scored, or no
   held-out question in the run);
+- fewer than 90% of the questions asked could be scored (`--min-coverage` changes it):
+  accuracy over the few that could says nothing about the rest;
+- a question that matched the last time cannot be measured now (its result is cut at the
+  row cap, or its reference stopped running);
 - a reference statement did not run. That question was not measured, so the bank has to be
   fixed before the run can pass;
 - the bank has a problem (an entry without `sql`, a repeated `id`, a file that is not JSON):

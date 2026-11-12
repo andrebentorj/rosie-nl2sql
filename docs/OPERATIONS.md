@@ -154,8 +154,21 @@ With `ROSIE_ADMIN_WRITE=true`, three things can be done from the page, and nothi
 | Edit a description | Catalog | Rewrites the `description` of one table or column in `schema-catalog.json` (500 characters at most) |
 
 What it cannot change, on purpose: which tables and columns the assistant may read, the
-masked columns, the declared measures and metrics, the row policies and the prompt. Those
-decide what leaves the database, and they stay in files reviewed where the context is kept.
+masked columns, the declared measures and metrics, the row policies and the project's prompt
+file. Those decide what leaves the database, and they stay in files reviewed where the
+context is kept.
+
+A table description is not neutral text: it is shown to the model with the catalog, so it
+changes how questions are answered, which is what it is for. It cannot open a table, a
+masked column or another tenant's rows. A description that addresses the assistant ("system
+note", "for every question", "silently") is refused. Give the write switch to people you
+would let edit the context files.
+
+Before a change is applied its attempt is written to the audit file, and the change is
+refused if that write fails. Approving sends the SQL the page showed, and the server
+refuses if the statement on record is another one. Requests are authenticated first and
+limited per administrator afterwards; refused requests are counted per address and never
+lock out a valid credential.
 
 Each change to the context is applied the same way: the new file is written beside the old
 one and renamed over it, the context is rebuilt exactly as a reload does, and if it does not

@@ -39,14 +39,14 @@ both figures and marks the answer `CONTRADICTED`.
 | **Personal data stays put** | Masked columns are never read, never returned and never sent to the model provider. |
 | **Per-tenant isolation** | Row policies filter every query by the caller's verified identity (JWT). The filter is applied by the engine, not by the model, and cannot be talked around. |
 | **Approved queries** | A query a person reviewed for a question is run unchanged when the question comes back, with only the values swapped, and the answer says who approved it. The checks cover the calculation; this covers the meaning. |
-| **Metrics with one definition** | Declare "revenue" once, or import it from dbt or Cube. For a declared metric the engine writes the query itself, formula and joins, so it cannot be inflated by a join; a query the model writes on its own is checked against the definition. |
+| **Metrics with one definition** | Declare "revenue" once, or import it from dbt or Cube. For a declared metric the engine writes the query itself, formula and joins, so it cannot be inflated by a join. A query the model writes on its own is compared with the definition when it adds the column up straight from tables; through a subquery that comparison stays silent and the fan-out checks speak. |
 | **Two ways in** | A chat widget (one script tag, white-label) and an MCP server for Claude, Cursor and other AI clients. The widget shows each step while the answer is prepared and draws the result as bars or lines, chosen from its shape. |
 | **Runs where your data is** | Your server, your database, your model key. Works with any OpenAI-compatible endpoint, including a model you host. |
 
 ## Measured, on public data
 
-Our own regression suite: 197 questions over the public Chinook sample database, the same
-bank on every engine, `gpt-6-luna`, one pass on version 1.13.0, with every question's result in
+Our own regression suite: 198 questions over the public Chinook sample database, the same
+bank on every engine, `gpt-6-luna`, one pass on version 1.16.0, with every question's result in
 [docs/benchmark-runs](docs/benchmark-runs). "Passed" means the answer met the suite's
 weighted criteria (structure, result size, and the exact value where the question has one);
 it is not exact-match accuracy, and we wrote the questions. Method, limits and how to
@@ -54,17 +54,18 @@ reproduce: [docs/BENCHMARK.md](docs/BENCHMARK.md).
 
 | | MySQL 8.4 | PostgreSQL 16 | SQL Server 2022 |
 |---|---|---|---|
-| Questions passed | 194 of 197 (98.5%) | 190 of 197 (96.4%) | 195 of 197 (99.0%) |
+| Questions passed | 196 of 198 (99.0%) | 196 of 198 (99.0%) | 196 of 198 (99.0%) |
 | Must-refuse questions refused (writes, masked data, injection) | 20 of 20 | 20 of 20 | 20 of 20 |
 | Trap questions, built from the error classes the certificate covers | 35 | 35 | 35 |
 | of which: wrong answer went out with no warning | 0 | 0 | 0 |
-| Correct answers flagged anyway (false alarms) | 7 of 93 | 6 of 93 | 7 of 95 |
-| Wrong numbers that went out with a clean certificate (misread questions) | 0 | 2 | 0 |
+| of which: flagged for repeated rows, the check the certificate is known for | 1 | 1 | 3 |
+| Right answers flagged anyway (false alarms) | 6 of 96 | 6 of 93 | 7 of 94 |
+| Answers that failed the suite and carried a clean certificate (misread questions) | 0 | 1 | 0 |
 | Cost of the whole run | US$ 0.14 | US$ 0.15 | US$ 0.15 |
 
 **On a benchmark we did not write.** On [BIRD Mini-Dev](docs/BIRD.md) (500 public questions,
 11 databases, context built from the schema alone) Rosie scores 54.4% execution accuracy on
-PostgreSQL, against the 51.8% baseline the dataset card lists for the same model. There the
+PostgreSQL. The dataset card lists 51.8% for the same model with a fixed prompt: the same range, not a lead. There the
 certificate flagged 10 of 214 wrong answers: almost all of them were misread questions, which
 it does not catch. Accuracy follows the model: on the same 500 questions `gpt-6.1-terra`
 scores 85.8%, at about one US cent per question ([docs/BIRD.md](docs/BIRD.md),
