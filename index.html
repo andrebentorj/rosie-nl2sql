@@ -139,8 +139,11 @@ footer { border-top: 1px solid var(--line); padding: 28px 0 44px; color: var(--m
         <div class="card"><h3>Filters that match nothing</h3><p>"Sales in Oporto" returns zero because the data says "Porto". Rosie checks the value exists and says which ones do.</p></div>
         <div class="card"><h3>Periods the data does not cover</h3><p>"This year" when the last record is from June is half a year. The answer says so.</p></div>
         <div class="card"><h3>Filters that remove nothing</h3><p>A condition every row satisfies is usually not the condition that was meant.</p></div>
-        <div class="card"><h3>Metrics with one definition</h3><p>Declare "revenue" once, or import it from dbt or Cube. Answers that compute it differently are flagged.</p></div>
-        <div class="card"><h3>What it does not do</h3><p>It checks the structure of the calculation, not whether the question was understood. A misread question passes every check. When a check cannot run, the answer says "not checked" and why.</p></div>
+        <div class="card"><h3>Metrics the engine compiles</h3><p>Declare "revenue" once, or import it from dbt or Cube. For a declared metric Rosie writes the query itself, formula and joins, so a join cannot inflate it.</p></div>
+        <div class="card"><h3>Queries a person approved</h3><p>A query someone reviewed for a recurring question is run unchanged when the question comes back, and the answer says who approved it.</p></div>
+        <div class="card"><h3>A second attempt, before you see it</h3><p>When a check names a defect, the evidence goes back to the model once. The corrected answer is used only if it checks out better.</p></div>
+        <div class="card"><h3>Says what was not checked</h3><p>Every answer carries a verdict. When no check could cover it, the answer says "not checked" and why, instead of looking the same as one that passed.</p></div>
+        <div class="card"><h3>What it does not do</h3><p>The automatic checks cover the structure of a calculation, not whether a question was understood. A misread question passes every one of them; approved queries and declared metrics are the answer to that.</p></div>
     </div>
 </section>
 

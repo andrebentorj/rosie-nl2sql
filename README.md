@@ -39,7 +39,7 @@ both figures and marks the answer `CONTRADICTED`.
 | **Personal data stays put** | Masked columns are never read, never returned and never sent to the model provider. |
 | **Per-tenant isolation** | Row policies filter every query by the caller's verified identity (JWT). The filter is applied by the engine, not by the model, and cannot be talked around. |
 | **Approved queries** | A query a person reviewed for a question is run unchanged when the question comes back, with only the values swapped, and the answer says who approved it. The checks cover the calculation; this covers the meaning. |
-| **Metrics with one definition** | Declare "revenue" once, or import it from dbt or Cube. Answers that compute it differently are flagged. |
+| **Metrics with one definition** | Declare "revenue" once, or import it from dbt or Cube. For a declared metric the engine writes the query itself, formula and joins, so it cannot be inflated by a join; a query the model writes on its own is checked against the definition. |
 | **Two ways in** | A chat widget (one script tag, white-label) and an MCP server for Claude, Cursor and other AI clients. |
 | **Runs where your data is** | Your server, your database, your model key. Works with any OpenAI-compatible endpoint, including a model you host. |
 
@@ -153,6 +153,8 @@ directory. The contract is in [contexts/example/README.md](docs/CONTEXT_DIRECTOR
 | Isolate tenants or teams | [docs/ROW_POLICIES.md](docs/ROW_POLICIES.md) |
 | Declare metrics, or import them from dbt or Cube | [docs/METRICS.md](docs/METRICS.md) |
 | Have a person approve the query behind a recurring question | [docs/APPROVED_QUERIES.md](docs/APPROVED_QUERIES.md) |
+| Monitor it with Prometheus and set alerts | [docs/MONITORING.md](docs/MONITORING.md) |
+| Reload the context without a restart, and catch schema changes | [docs/OPERATIONS.md](docs/OPERATIONS.md) |
 | Know what leaves my network, and use my own model | [docs/DATA_PRIVACY.md](docs/DATA_PRIVACY.md) |
 | Call the HTTP API | [docs/API.md](docs/API.md) |
 | Write or edit a context directory by hand | [contexts/example/README.md](docs/CONTEXT_DIRECTORY.md) |

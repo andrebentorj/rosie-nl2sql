@@ -74,6 +74,9 @@ Response `200`:
 - `approval` (not shown above) is `null` unless the answer ran an approved query; then it
   carries `id`, `question`, `approvedBy`, `approvedOn`, `reviewBy` and the `params` used
   (`docs/APPROVED_QUERIES.md`).
+- `metric` (not shown above) is `null` unless the statement was compiled by the engine from a
+  declared metric; then it carries the metric's `name`, `expression`, `table`, the
+  `dimensions` and `filters` used and the `joins` added (`docs/METRICS.md`).
 - `certificate.repair`, when present, records that the checks flagged a first query and the
   model was asked once to correct it (`docs/CERTIFICATE.md`).
 - `answerHandle` is the signed ticket for the follow-up routes below; it expires after 15
@@ -148,3 +151,19 @@ question is refused until an administrator fixes the grants.
 `status` is `degraded` while either audit sink is failing; page on `dbHealthy=false` or
 `fileSinkOk=false` (a governance control that fails silently is not a control). Raw database
 error text is never included here; it lives in the server logs.
+
+## GET /metrics (its own token)
+
+Counters in the Prometheus text format: questions by outcome, certificate verdicts, checks
+that could not run, answers from approved queries and compiled metrics, latency and tokens.
+Off until `ROSIE_METRICS_TOKEN` is set, and then open only to a request that presents that
+value as a bearer token; `ROSIE_API_TOKEN` does not open it. See
+[MONITORING.md](MONITORING.md) for the list of metrics and suggested alerts.
+
+## POST /admin/reload (its own token)
+
+Rebuilds the context from its directory and puts it in service without a restart. Off until
+`ROSIE_ADMIN_TOKEN` is set; `ROSIE_API_TOKEN` does not open it. Answers 200 with a summary
+(`changed`, `version`, counts of tables, metrics and approved queries), or 422 with the
+reason when the new context does not build, in which case the context in service is
+unchanged. See [OPERATIONS.md](OPERATIONS.md).

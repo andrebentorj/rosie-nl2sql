@@ -105,6 +105,22 @@ Version 1.1.0 extends the fan-out check to the forms behind those ten `NOT_CHECK
 that is not first in `FROM`). The suite has not been re-run since, so the count above is the
 last measured one, not the current one.
 
+**Compiled metrics, measured (MySQL, version 1.3.0, 2026-11-11, one pass each).** The demo
+context declares five metrics, so `query_metric` (`docs/METRICS.md`) applies to it.
+
+- *Offered on every question:* 183 of 194 passed, down from about 190, and one trap answer
+  went out without a warning, the only one in any run of this suite. The default model
+  called the tool for 86 of 161 answers, including questions that ask for no metric at all:
+  "how many sales reps do we have?" came back as revenue per employee.
+- *Offered only when the question names a declared metric, which is what shipped:* 191 of
+  194 passed, 34 of 34 traps without a silent wrong answer. The tool answered 28 questions
+  and all 28 passed. The three misses were clarifications the bank did not expect.
+
+The first result is recorded because it is the useful one: a governed path a small model can
+choose freely makes answers worse, not better. The gate is deterministic (the same phrase
+match the certificate uses), so a question worded without the metric's name or a synonym
+does not get the compiled path; the model writes the query and the metric check applies.
+
 Correct answers that carried a certificate and were flagged anyway: 4 of 82 on MySQL, 4 of 79
 on PostgreSQL, 5 of 79 on SQL Server (5 to 6%). All are accurate statements about a filter the model added that removes
 no rows; they are counted as false alarms because the answer itself was right. The demo

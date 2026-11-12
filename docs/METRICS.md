@@ -46,7 +46,10 @@ believe it is being enforced.
    - **pass**: the query computes the declared aggregate(s), reads the declared table and
      applies every required filter;
    - **warn**: it does not, and the detail says which part is missing. The answer is then
-     never reported as verified.
+     flagged, and the mismatch is handed back to the model once for a corrected query
+     (`docs/CERTIFICATE.md`, The second attempt).
+3. **Compilation.** A metric that declares a `table` can also be computed by the engine
+   itself: see the next section.
 
 The comparison is structural, not textual. Aliases, table qualifiers, identifier quoting,
 letter case and the order of operands in `a * b` or `a + b` do not matter. A required filter
@@ -64,6 +67,52 @@ Two details that keep the check honest:
 
 The check proves the query follows the declared definition. It does not prove the definition
 is right, and it says nothing when a question names no metric.
+
+## Compiled metrics: the engine writes the query
+
+Checking a query after the model wrote it catches a wrong formula. Not letting the model
+write the formula is stronger, and it is what semantic layers do. For a metric that declares
+its `table`, the model has a tool, `query_metric`, where it says only **which** metric, by
+**which** dimensions and under **which** filters:
+
+```json
+{ "metric": "line_revenue",
+  "group_by": [ "Genre.Name", "Invoice.InvoiceDate:year" ],
+  "filters": [ { "column": "Invoice.BillingCountry", "op": "in", "value": [ "USA", "Canada" ] } ],
+  "order": "metric_desc", "limit": 10 }
+```
+
+The engine builds the statement:
+
+- **The formula** is the declared `expression`, and the declared `filters` are always applied.
+- **Joins** are added by the engine, and only along many-to-one relationships leading away
+  from the metric's table (a foreign key pointing at a primary key, from the catalog's
+  `relationships`). Each row of the metric's table therefore meets at most one row of every
+  joined table, so a compiled metric cannot be inflated by a join. `LEFT JOIN` is used, so a
+  row with no match still counts.
+- **A dimension that would repeat rows is refused.** Asking for `revenue`
+  (`SUM(Invoice.Total)`) by `Genre.Name` needs the invoice lines, which repeat each invoice;
+  the tool answers that the dimension is not reachable and the model picks `line_revenue`
+  instead, or writes the query. Two equally short paths to a table are refused as ambiguous.
+- **Dimensions** are `Table.Column`; a date column may carry a grain (`:year`, `:quarter`,
+  `:month`). If the metric declares `dimensions`, only those are accepted.
+- **Filters** take `=`, `!=`, `>`, `>=`, `<`, `<=`, `in` and `between`, with numbers or text
+  bound as literals. Masked columns cannot be used.
+
+The compiled statement then runs like any other: validator, row cap, row policies, read-only
+pool, Answer Certificate. The answer carries `metric` (name, formula, base table, dimensions,
+filters, joins) and the widget shows "Declared metric: revenue = SUM(Invoice.Total)".
+
+What it does not do: ratios between two metrics, metrics over a join declared inside the
+metric, self-referencing tables, and custom time windows ("trailing 12 months"). For those
+the model writes the query and the checks above apply.
+
+**When the tool is offered.** Only when the question names a declared metric, by its name or
+a synonym, and only for the metrics it names. This is deliberate and measured: offered on
+every question, the default model used it for questions that ask for no metric and accuracy
+on our suite fell from 190 to 183 of 194; gated this way it rose to 191, with all 28
+compiled answers correct (`docs/BENCHMARK.md`). The consequence is that synonyms matter:
+a metric people call "sales" or "turnover" should list those words.
 
 ## Importing from dbt or Cube
 

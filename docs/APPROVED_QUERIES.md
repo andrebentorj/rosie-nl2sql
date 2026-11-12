@@ -104,5 +104,15 @@ The queue lists each answer with its question, its SQL and why it is there. The 
 find the wrong answer, ask the question again in a way that gets the right statement (or
 write it), check the result, then approve **that** answer by its message id. `--approve`
 validates the statement against the catalog and appends it to `verified-queries.json` with
-your name and today's date. Add `params` by hand where values should vary, and restart the
-server.
+your name and today's date. Add `params` by hand where values should vary, then reload the
+context. No restart is needed: `docker kill --signal=HUP <container>`, or the reload
+endpoint ([OPERATIONS.md](OPERATIONS.md)).
+
+## When the database changes under an approved query
+
+An approval is a statement about a schema. Rosie compares the catalog with the database at
+startup, every hour and after each reload. An approved query that reads a table or a column
+that is no longer there is **suspended**: the model is not shown it and cannot run it by id,
+so no answer carries a reviewer's name for a statement that stopped matching the database.
+The suspension is logged, counted in `/metrics`, and lifts by itself once the query no
+longer reads anything missing. See [OPERATIONS.md](OPERATIONS.md#schema-drift).
