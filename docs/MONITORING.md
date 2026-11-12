@@ -55,6 +55,7 @@ does describe how the service is used.
 | `rosie_schema_drift_checked` | gauge | 1 when the catalog was compared with the database, 0 when the check is off or could not run |
 | `rosie_schema_drift_objects` | `kind` | Tables and columns the catalog names that the database no longer has |
 | `rosie_approved_queries_suspended` | gauge | Approved queries and examples suspended because they read one of those |
+| `rosie_evaluation_*` | gauges | Accuracy, outcomes, wrong answers by warning, regressions and time of the last `npm run evaluate`. Present once one has run ([EVALUATION.md](EVALUATION.md)) |
 
 Every transport is counted the same way. A question asked through the MCP server and one
 asked through the widget both pass the same audit point, and that is where the counters
@@ -111,7 +112,7 @@ Two ratios are worth a panel even without an alert:
 - Counters live in the process and restart at zero with it, which is what Prometheus
   expects of a counter. With several replicas, scrape each one.
 - The counters say how the service behaves, never whether an answer was right. For that,
-  see the review queue (`npm run review`) and the question bank in
-  [BENCHMARK.md](BENCHMARK.md).
+  run your own question bank with `npm run evaluate` ([EVALUATION.md](EVALUATION.md)) and
+  work the review queue (`npm run review`).
 - `GET /api/assistant/health` stays public and minimal. Use it for liveness, and the
   metrics endpoint for everything else.

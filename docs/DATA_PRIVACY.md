@@ -89,5 +89,13 @@ Self-hosted endpoints have not been part of the automated test suite of this rep
 | `rosie_feedback` | Thumbs up or down, with the question and SQL. | Same. |
 | Audit file | The same audit records as newline-delimited JSON, as a fallback when the database is down. | `ROSIE_AUDIT_FILE` (default `logs/`). |
 
-Result rows are not stored by Rosie. Retention of these tables is yours to set; nothing
-purges them automatically.
+Result rows are not stored by Rosie. Retention of these tables is yours to set, and nothing
+is removed unless you schedule it:
+
+```bash
+npm run retention -- --days 365               # report: how many records are older
+npm run retention -- --days 365 --confirm     # remove them from the three tables
+```
+
+The command touches only those three tables. The audit file is not rotated by Rosie; use
+your log tooling for it.
