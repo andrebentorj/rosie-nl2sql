@@ -64,7 +64,7 @@ version), run on every commit and before every release.
 | Unauthenticated in production? | No. With `NODE_ENV=production` and no token configured, every request is refused |
 | Are administrative actions separated? | Yes. Metrics and context reload each have their own secret (`ROSIE_METRICS_TOKEN`, `ROSIE_ADMIN_TOKEN`); the application token opens neither. Both routes do not exist until their secret is set |
 | Can one user replay another's answer? | No. Follow-up actions (export, explain) need a handle signed by the server, bound to the user and the project, valid for 15 minutes. The SQL inside is validated again before it runs |
-| Rate limits? | Per client address: 100 questions an hour and 1,000 a day by default, and 3 concurrent questions per process. See "Not built" for replicas |
+| Rate limits? | Per client address: 100 questions an hour and 1,000 a day by default, and 3 concurrent questions per process. With several replicas the quotas can be shared through the engine database (`ROSIE_RATE_LIMIT_STORE=database`) |
 
 ## What leaves your network
 
@@ -145,8 +145,10 @@ validator is fixed together with a regression case in the security suite. See `S
 
 - **No certification.** There is no SOC 2 or ISO 27001 report, and no penetration test by a
   third party yet. The security suite and its results are available on request.
-- **Rate limits are per process.** With several replicas each one counts separately. Put the
-  shared limit in the proxy or gateway in front.
+- **Shared rate limits are opt-in and cover the HTTP routes.** With
+  `ROSIE_RATE_LIMIT_STORE=database` the hourly and daily quotas are one number for every
+  replica, kept in the engine database. Without it each replica counts separately. The
+  quotas of the MCP transport and the concurrency limit are per process in both cases.
 - **No licence key and no seat enforcement.** Use is governed by the agreement.
 - **No built-in secret manager integration.** Secrets are environment variables; inject them
   from your own secret store.

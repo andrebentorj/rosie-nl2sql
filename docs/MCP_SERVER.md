@@ -169,7 +169,7 @@ one-shot check would make a later `GRANT` invisible until restart.
 same hourly/daily quotas and in-flight cap as the HTTP route (`AI_MAX_QUERIES_PER_HOUR`,
 `AI_MAX_QUERIES_PER_DAY`, `AI_CONCURRENCY_LIMIT`), keyed by the caller identity. A refused
 call is an `isError` result that says why in plain words. The listing tools and the
-resources are free. State is per process; replicas share nothing yet.
+resources are free. State is per process: the shared quota of the HTTP routes (`ROSIE_RATE_LIMIT_STORE`) does not cover this transport yet.
 
 **Cancellation.** A client that cancels (`notifications/cancelled`) or closes the pipe aborts
 the provider loop through the same signal an HTTP socket close uses; nothing keeps spending

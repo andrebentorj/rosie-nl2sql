@@ -99,11 +99,35 @@ Two settings bound it:
   every question in flight holds a model call and can hold a database connection. Raise it to
   what your provider's rate limit and your database accept. It counts **per process**.
 - **`AI_MAX_QUERIES_PER_HOUR`** and **`AI_MAX_QUERIES_PER_DAY`** (defaults 100 and 1000) are
-  quotas per caller, also counted per process.
+  quotas per caller. By default each process counts them on its own.
 
-For more than one process, put them behind a load balancer and set `ROSIE_HANDLE_SECRET` to
-the same value on all of them, so a follow-up can land on any replica. The concurrency limit
-and the quotas are not shared between replicas yet: N replicas allow N times each number.
+### More than one process
+
+Put the replicas behind a load balancer and set two things on all of them:
+
+- **`ROSIE_HANDLE_SECRET`**, the same value everywhere, so a follow-up can land on any replica.
+- **`ROSIE_RATE_LIMIT_STORE=database`**, so the hourly and daily quotas are one number for the
+  installation instead of one per replica. The count is kept in the engine database, in the
+  table `rosie_rate_limit` that the schema file creates (`db/schema.sql` and its PostgreSQL and
+  SQL Server versions; running the file again after an upgrade only creates what is missing).
+  `npm run doctor` says whether the table is there.
+
+How the shared quota behaves:
+
+- Windows are aligned to the clock, the hour and the UTC day, so every replica agrees on
+  where a window starts. A caller who used the quota at 10:59 has a fresh one at 11:00.
+- The stored count is exact under concurrency. It was tested with forty simultaneous
+  requests split over two replicas on MySQL, PostgreSQL and SQL Server, and with two real
+  server processes sharing a quota of six: the seventh request was refused by either one.
+- It costs two or three small statements on the main pool per request.
+- If the table cannot be reached, each process counts in its own memory and writes
+  `rate_limit_store_unavailable` to the log once, then `rate_limit_store_recovered` when the
+  table answers again. Quotas are looser for that while; the assistant keeps answering.
+- Rows of past windows are removed by the engine. The table holds the client address, the
+  same key the quota uses, for about two windows.
+
+The concurrency limit stays per process on purpose: it protects the process, and capacity is
+meant to grow with replicas. The quotas of the MCP transport are also still per process.
 
 People do not ask continuously. A person reading an answer and typing the next question
 sends one every minute or two at most, so a process that carries 5 answers per second serves
