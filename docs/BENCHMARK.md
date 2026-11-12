@@ -97,7 +97,11 @@ two answers, an invoice total repeated by a join and a filter on a playlist name
 not exist; both went back to the model with the evidence and both came out with the value
 the truth query gives. The other twelve flagged trap answers were period and coverage
 warnings, which describe the data and are not retried. No correct answer was changed by a
-retry. Two corrections is a small number: it shows the mechanism works where it applies and
+retry in that run. That says less than it seems: the run predates the widening of the fan-out
+check in 1.1.0, and an independent review later showed, on a database of its own, a correct
+total replaced by a wrong one. Version 1.12.0 changed the rule (a second answer replaces the
+first only on evidence that the defect is gone, and two grains of a total are never sent
+back); the suite has to be run again before this sentence can be repeated for it. Two corrections is a small number: it shows the mechanism works where it applies and
 says little about how often it will apply on another schema.
 
 Version 1.1.0 extends the fan-out check to the forms behind those ten `NOT_CHECKED` answers

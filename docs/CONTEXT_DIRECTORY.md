@@ -135,6 +135,12 @@ Richer fields improve both the summary and the `describe_table` tool output:
 - **table.synonyms** `["customers", "clients"]` — alternative names users say.
 - **column.description** — what the column means.
 - **column.synonyms** — alternative names for the column.
+- **column.measure** `true` — the column is a value of each record of its table (the total of
+  an order, the amount of a payment), to be added once per record. It is what lets the Answer
+  Certificate call a total that repeats those records wrong; without it (or a declared metric
+  that adds the column up) such a total is reported as two possible readings. Leave it off
+  for attributes that are legitimately added once per related row (the length of a track per
+  sale). See `docs/CERTIFICATE.md`.
 - **column.enumValues** `{ "void": "cancelled by the user", ... }` — meaning of each code
   (essential for status-like columns).
 - **catalog.metrics** (root level): named business metrics. A value may be free text

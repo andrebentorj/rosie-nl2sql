@@ -34,7 +34,7 @@ both figures and marks the answer `CONTRADICTED`.
 
 | | |
 |---|---|
-| **Answer Certificate** | After the SQL runs: detects joins that inflate totals, filters on values that do not exist, periods the data only partly covers, filters that remove nothing, and queries that ignore a declared metric definition. For totals over joins it re-derives the number by a second route and reports `CROSS_CHECKED` or `CONTRADICTED`. Every answer carries an explicit verdict, including `NOT_CHECKED` with the reason. |
+| **Answer Certificate** | After the SQL runs: detects joins that inflate totals, filters on values that do not exist, periods the data only partly covers, filters that remove nothing, and queries that ignore a declared metric definition. For totals over joins it re-derives the number by a second route: `CROSS_CHECKED` when both agree, `CONTRADICTED` when they differ and the context says the column counts once per record, and both figures side by side when the statement alone cannot say which was meant. Every answer carries an explicit verdict, including `NOT_CHECKED` with the reason. |
 | **Read-only by construction** | SQL is parsed and validated before it runs: SELECT only, tables and columns from an allowlist, no system functions. The database user is checked at startup and Rosie refuses to answer if it can do more than SELECT. |
 | **Personal data stays put** | Masked columns are never read, never returned and never sent to the model provider. |
 | **Per-tenant isolation** | Row policies filter every query by the caller's verified identity (JWT). The filter is applied by the engine, not by the model, and cannot be talked around. |
