@@ -159,6 +159,36 @@ no gain (296 of 500, 6 answers fixed and 5 broken). It is a result on this set, 
 to quote in general. The detail and the caveats are
 in `docs/CERTIFICATE.md`, "The question review".
 
+## What kind of wrong the wrong answers are
+
+A run only says that the rows of an answer differ from the rows of the reference.
+`node test/bird/diagnose.js <run.json>` runs both statements again and says how they differ,
+with no model and no opinion.
+
+| How the answer differs from the reference | 2026 questions, 166 wrong | 2025 questions, 173 wrong |
+|---|---|---|
+| A single value, and it is another value | 95 (57%) | 67 (39%) |
+| Rows that are neither part of the reference nor contain it | 34 (20%) | 26 (15%) |
+| Fewer rows, more rows, or one row against several | 19 (11%) | 18 (10%) |
+| Same rows, shown with other columns, another order or another format | 5 (3%) | 25 (14%) |
+| Another number of columns, and no choice of columns makes the rows equal | 11 (7%) | 31 (18%) |
+| No rows | 2 (1%) | 6 (3%) |
+
+Both columns are the runs with the question review on. What it says:
+
+- **Most wrong answers are one number that is not the reference's number.** That is a
+  difference in what was counted or how a term was taken, not in how the result was shown.
+  On the 2025 questions the reviewer read 55 of those 67 and said the statement answers the
+  question: a careful second reader finds the answer's reading as good as the reference's.
+  No check after the fact recovers that. What does is the definition being written down
+  before the question is asked, which is what declared metrics and approved queries are for
+  (`docs/METRICS.md`, `docs/APPROVED_QUERIES.md`), and this benchmark is run without them.
+- **What to show is a small part.** Answers with the reference's rows under other columns
+  are 3% of the wrong ones on the 2026 questions and 14% on the 2025 ones, where the
+  questions say less about what to return.
+- The run on the 2025 questions also asked for a clarification 31 times, each counted as
+  wrong by the benchmark's rule.
+
 ## Other models
 
 The run above uses the cheapest model on the list. The same 500 questions with a stronger
