@@ -154,7 +154,9 @@ The same 500 questions with `gpt-6-luna` writing and `gpt-6.1-terra` reviewing e
 (`AI_QUESTION_REVIEW=true`, engine 1.20.0, 2026-11-13): **320 of 500 (64.0%)**, against 272
 for the writer alone. 43 wrong answers were turned right by the second attempt and 4 right
 ones were turned wrong. The reviewer's instructions were adjusted on answers to these same
-questions, so this is not yet a figure to quote in general. The detail and the caveats are
+questions, and the same run on the archived 2025 questions, which it had never seen, gave
+no gain (296 of 500, 6 answers fixed and 5 broken). It is a result on this set, not a figure
+to quote in general. The detail and the caveats are
 in `docs/CERTIFICATE.md`, "The question review".
 
 ## Other models

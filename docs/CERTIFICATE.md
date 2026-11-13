@@ -287,6 +287,8 @@ another statement and the certificate does not rate that one lower.
   and drops the second attempt.
 - **Use a stronger model than the one that writes.** The measurement below shows a model
   reviewing its own query finds little.
+- **Measure it on your own questions before turning it on.** It raised accuracy by eight
+  points on one benchmark and by nothing on another.
 
 ### What it did on BIRD Mini-Dev
 
@@ -304,7 +306,7 @@ another statement and the certificate does not rate that one lower.
 | Right answer turned wrong | 4 |
 | Still wrong, or still right, after the second attempt | 27 and 7 |
 
-**Both parts of the bar are met.** Read it with these in mind:
+**Both parts of the bar are met on this set, and the result did not repeat on another one (below).** Read it with these in mind:
 
 - **The review accounts for 39 of the 48 answers gained.** Every replaced answer had its
   first statement scored too: without the second attempts this same run would have had 281
@@ -323,6 +325,52 @@ another statement and the certificate does not rate that one lower.
 Every question, with both statements where there were two, is in
 `docs/benchmark-runs/question-review-bird-1.20.0.json`. To repeat it:
 `AI_QUESTION_REVIEW=true AI_QUESTION_REVIEW_MODEL=gpt-6.1-terra node -r dotenv/config test/bird/run.js`.
+
+### The same thing on questions it had never seen: not confirmed
+
+Because the instructions were adjusted on the 2026 questions, the run was repeated, with
+nothing changed, on a set that played no part: the 500 questions of the earlier Mini-Dev
+release, which the benchmark keeps archived (2025-07-04), over the same databases. The bar
+was fixed before the run: three wrong answers turned right for each right one turned wrong,
+and fewer than 10 right ones turned wrong.
+
+| | 2026 questions | 2025 questions |
+|---|---|---|
+| Correct, with the review | 320 of 500 | 296 of 500 |
+| Correct in the same run without the second attempts | 281 | 295 |
+| Answers the reviewer sent back | 111 | 53 |
+| Wrong answer turned right | 43 | 6 |
+| Right answer turned wrong | 4 | 5 |
+
+**The gain did not carry over: 6 against 5 is no gain, and the bar is not met.** The review
+stays off by default and the 64% above is a result on one set of questions, not a property
+of the feature.
+
+What the eleven changed answers show, read one by one:
+
+- Of the five right answers turned wrong, one is the reviewer overruling the definition given
+  with the question. In two the question asks for two things ("how many ... list them by
+  their ID") and the reference returns one of them: the reviewer asked for the other and
+  the answer stopped matching. In two the reviewer's reading is defensible and is not the
+  reference's.
+- Of the six wrong answers turned right, three are plain corrections (a total repeated by a
+  join, a "top five" answered with one row, a list of names left out) and three are a
+  rounding or a missing value.
+- On these questions the reviewer said the statement answers the question for 125 of the
+  173 answers that were wrong. The 2026 questions are long and say exactly what to return;
+  these are short, and a wrong answer is more often a matter of which reading the reference
+  took. A second reader cannot find that from the question. This is our reading of the
+  difference between the two sets, and it was not tested.
+
+So what can be said today: on questions that specify precisely what is wanted, a stronger
+model reviewing a cheaper one's query recovered a good share of its misread questions; on
+short, loosely worded questions it changed almost nothing, and broke about as much as it
+fixed. Which of the two a deployment looks like has to be measured there, with the
+evaluator (`docs/EVALUATION.md`), before turning it on.
+
+Every question of this run is in
+`docs/benchmark-runs/question-review-bird-2025-set-1.20.1.json`. To repeat it, point
+`BIRD_QUESTIONS_FILE` at a jsonl copy of the archived file.
 
 How it came to this design is the next section: the same reviewer used as a warning did not
 pass, which is why it is used for a second attempt and shown as a reading.
