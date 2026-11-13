@@ -4,6 +4,80 @@ What changes after the first install: the context is edited, the database schema
 somebody has to know when either one breaks an answer. This page covers the two mechanisms
 for that. Counters and alerts are in [MONITORING.md](MONITORING.md).
 
+## Check a context change before it is merged
+
+The context is where an installation's mistakes are made: a column renamed in the catalog and
+not in an approved query, a mask whose name has a typo and so protects nothing, a metric over
+a table that was dropped. The server stops at startup for some of these and quietly drops
+others (an example that no longer validates is only logged). `npm run check-context` finds
+them in the pull request, with no database and no model, and names the file and the entry.
+
+```bash
+npm run check-context -- --context ./rosie-context                              # is it valid
+npm run check-context -- --context ./rosie-context --base ../main/rosie-context # and what the change does
+```
+
+What it checks:
+
+- every file is present and parses, and the context loads the way the server loads it
+  (catalog, metrics, row policies);
+- **every mask names a column that exists**; a mask that names nothing is a failure, because
+  the column it meant to hide is being read;
+- every relationship and primary key names a column of the catalog;
+- every approved query would run as approved (parameters declared, review date ahead), and
+  every example and every reference of the evaluation bank passes the SQL validator against
+  this catalog, with the reason when it does not;
+- clarification rules compile and have a question and options.
+
+With `--base` it compares against another copy of the directory (the main branch) and
+reports tables and columns added or removed, metrics and approved queries changed, and the
+size of the prompt. **Anything that makes more data readable than before fails**: a mask
+removed from a column that still exists, a row policy removed from a table that still
+exists. `--allow-less-protection` turns that into a warning, for the pull request whose
+purpose is that decision. A new column with no mask is a warning, with its name.
+
+`--markdown report.md` writes the same report as a table for a pull request comment,
+`--json` prints it for a script, `--strict` makes warnings fail. The exit code is 0 when
+nothing failed, 1 when something did, 2 when the command could not start. SQL is validated
+for the dialect in `DB_DIALECT`.
+
+A pipeline for a repository that holds the context, as a GitHub Actions job:
+
+```yaml
+name: rosie-context
+on:
+  pull_request:
+    paths: [ 'rosie-context/**' ]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: head }
+      - uses: actions/checkout@v4
+        with: { path: base, ref: '${{ github.base_ref }}' }
+      - uses: actions/checkout@v4
+        with: { repository: your-org/rosie, path: rosie, token: '${{ secrets.ROSIE_REPO_TOKEN }}' }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --omit=dev
+        working-directory: rosie
+      - run: >
+          node scripts/check-context.js
+          --context ../head/rosie-context
+          --base ../base/rosie-context
+          --markdown ../report.md
+        working-directory: rosie
+        env: { DB_DIALECT: postgres }
+      - if: always()
+        run: cat report.md >> "$GITHUB_STEP_SUMMARY"
+```
+
+This job needs no secret of the database and no model key. Where the pipeline can reach a
+database, run `npm run doctor -- --offline` after it (catalog against the live schema) and,
+with a model key, `npm run evaluate -- --min <n>` (answers against the evaluation bank,
+`docs/EVALUATION.md`). The three commands share the exit-code rule, so each can gate a merge.
+
 ## Reload the context without a restart
 
 The context directory (catalog, masked columns, instructions, metrics, approved queries, row

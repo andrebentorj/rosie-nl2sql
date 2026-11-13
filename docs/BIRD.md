@@ -189,6 +189,46 @@ Both columns are the runs with the question review on. What it says:
 - The run on the 2025 questions also asked for a clarification 31 times, each counted as
   wrong by the benchmark's rule.
 
+## With the benchmark's column descriptions: no gain
+
+The benchmark's fixed-prompt baseline gives every participant a description of most columns
+(`baseline_inference/schemas/postgresql.json` of the dataset: 666 of 798 columns, `a11` is
+"average salary"). The runs above did not use them: the catalog was the introspected one.
+This run puts them in the prompt (`AI_CATALOG_DESCRIPTIONS=true`, `BIRD_DESCRIPTIONS_FILE`),
+with nothing else changed and the question review off. `gpt-6-luna`, engine 1.21.0,
+2026-11-13. The bar was fixed before the run: 300 correct or more is a gain, 281 or fewer is
+none.
+
+**272 of 500 (54.4%), the same as without them.** The model called a tool 1,473 times
+against 1,847 and read 5% fewer tokens, so the descriptions saved it some looking up. They
+did not make it right more often. Our reading, not tested: each question here comes with an
+"evidence" paragraph that already defines its terms, often by column, so the description
+adds little. A user's question comes with no such paragraph, and there the description is
+the only place the meaning is written. This benchmark cannot tell whether that helps.
+
+## How much the same model changes from one run to the next
+
+Three runs of `gpt-6-luna` over the same 500 questions now exist (2026-11-10, the first
+statements of the run with the review, and the run with descriptions). They are not
+identical in configuration, and the totals are 272, 281 and 272. Question by question:
+
+| The question was answered right in | Questions |
+|---|---|
+| all three runs | 187 |
+| two of the three | 96 |
+| one of the three | 72 |
+| none | 145 |
+
+**A third of the questions (168) change outcome between runs.** Two things follow.
+
+- A difference of ten or fifteen answers between two single runs says nothing, in either
+  direction. That applies to the figures on this page, ours included.
+- 355 questions were answered right at least once, against 272 to 281 in any one run. The
+  right statement is often within the model's reach and not the one it wrote that time. A
+  majority of the three would give 283, so voting is not what closes that distance; choosing
+  among several candidates by something other than their count might. Nothing in the engine
+  does that today.
+
 ## Other models
 
 The run above uses the cheapest model on the list. The same 500 questions with a stronger
