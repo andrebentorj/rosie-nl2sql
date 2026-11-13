@@ -74,6 +74,11 @@ Response `200`:
 - `approval` (not shown above) is `null` unless the answer ran an approved query; then it
   carries `id`, `question`, `approvedBy`, `approvedOn`, `reviewBy` and the `params` used
   (`docs/APPROVED_QUERIES.md`).
+- `unfinished` (not shown above) is `null` unless the request was stopped by a limit before
+  the model ran the query that answers the question; then it is `{ "reason" }`
+  (`query_budget`, `tool_calls`, `token_budget` or `loop_limit`), `sql` and `table` are
+  `null` and `narrative` says that there is no answer. A query the model ran only to look at
+  the data is never returned as the answer.
 - `questionReview` (not shown above) is `null` unless `AI_QUESTION_REVIEW=true` and the review
   ran; then it carries `verdict` (`answers`, `answers_on_this_data`, `does_not_answer`,
   `cannot_tell`), `reading` (one sentence), `model`, `outcome` (`corrected`, `not_improved`,

@@ -96,8 +96,9 @@ So, what this benchmark says about Rosie:
 
 - as a text-to-SQL engine it performs like the model underneath it, slightly better;
 - the certificate removes one class of silent error (the structural one) and does nothing
-  for misread questions, which need good context: column descriptions, declared metrics,
-  verified example queries. None of those were used here, by design.
+  for an answer that is sound and is not what was asked. Those need knowledge of the data
+  and of the terms, which a context provides. None was used here, by design. What kind of
+  knowledge is in "What kind of wrong the wrong answers are" below.
 
 ## Method
 
@@ -154,8 +155,8 @@ The same 500 questions with `gpt-6-luna` writing and `gpt-6.1-terra` reviewing e
 (`AI_QUESTION_REVIEW=true`, engine 1.20.0, 2026-11-13): **320 of 500 (64.0%)**, against 272
 for the writer alone. 43 wrong answers were turned right by the second attempt and 4 right
 ones were turned wrong. The reviewer's instructions were adjusted on answers to these same
-questions, and the same run on the archived 2025 questions, which it had never seen, gave
-no gain (296 of 500, 6 answers fixed and 5 broken). It is a result on this set, not a figure
+questions, and the same run on the archived 2025 questions gave no gain (296 of 500, 6
+answers fixed and 5 broken), on a set whose references are unreliable. It is a result on this set, not a figure
 to quote in general. The detail and the caveats are
 in `docs/CERTIFICATE.md`, "The question review".
 
@@ -163,11 +164,13 @@ in `docs/CERTIFICATE.md`, "The question review".
 
 A run only says that the rows of an answer differ from the rows of the reference.
 `node test/bird/diagnose.js <run.json>` runs both statements again and says how they differ,
-with no model and no opinion.
+with no model and no opinion. It says how, not why: a total repeated by a join and a filter
+on the wrong value both end in the first row of this table.
 
 | How the answer differs from the reference | 2026 questions, 166 wrong | 2025 questions, 173 wrong |
 |---|---|---|
-| A single value, and it is another value | 95 (57%) | 67 (39%) |
+| One value, and it is another value | 71 (43%) | 56 (32%) |
+| One row of several values, differing in at least one | 24 (14%) | 11 (6%) |
 | Rows that are neither part of the reference nor contain it | 34 (20%) | 26 (15%) |
 | Fewer rows, more rows, or one row against several | 19 (11%) | 18 (10%) |
 | Same rows, shown with other columns, another order or another format | 5 (3%) | 25 (14%) |
@@ -176,13 +179,27 @@ with no model and no opinion.
 
 Both columns are the runs with the question review on. What it says:
 
-- **Most wrong answers are one number that is not the reference's number.** That is a
-  difference in what was counted or how a term was taken, not in how the result was shown.
-  On the 2025 questions the reviewer read 55 of those 67 and said the statement answers the
-  question: a careful second reader finds the answer's reading as good as the reference's.
-  No check after the fact recovers that. What does is the definition being written down
-  before the question is asked, which is what declared metrics and approved queries are for
-  (`docs/METRICS.md`, `docs/APPROVED_QUERIES.md`), and this benchmark is run without them.
+- **Most wrong answers are one row whose figures are not the reference's.** That is a
+  difference in what was computed, not in how the result was shown.
+- **Why they differ is mostly not a matter of reading the question.** An earlier version of
+  this page said it was, and that declared metrics and approved queries were the remedy. An
+  independent review of this run read 65 of the wrong answers on the 2026 questions one by
+  one and found another cause in about half of them: the model does not know **how the
+  database records a missing value**. A question says "heroes with a known weight", the
+  model writes `weight_kg IS NOT NULL`, and the table holds 0 for "not recorded" (172 of
+  its 750 rows, which we checked; 125 names are `-`). The next causes it found are the
+  grain of the entity (an average weighted by the rows of a join) and groups with nothing
+  in them left out by an inner join. A reading of the question that differs defensibly from
+  the reference's was 3 of the 65. The classification is that reviewer's, by inspection.
+- **So the remedy is knowledge of the data, and it can be checked.** "Is there a weight of
+  0?" is one query. What that calls for is a profile of each column in the catalog (nulls,
+  zeros, empty strings, markers such as `-`), which the engine does not build yet. Metrics
+  and approved queries do not address this kind of error.
+- **The certificate already points at part of them and the engine does not act on it.** With
+  `gpt-6-luna`, an answer carrying a fan-out or grain warning was wrong in 25 of 25, 12 of
+  13 and 7 of 7 cases in the three runs; with `gpt-6.1-terra`, in 1 of 7. The warning is
+  sent back to the model only for a column the context declares, and these contexts declare
+  none.
 - **What to show is a small part.** Answers with the reference's rows under other columns
   are 3% of the wrong ones on the 2026 questions and 14% on the 2025 ones, where the
   questions say less about what to return.
@@ -254,8 +271,8 @@ Two things this run does not say. It is not a like-for-like comparison of the tw
 `gpt-6-luna` run above was made two days earlier with an older version of the engine, and the
 engine changed in between (among other things it now asks once for the execution of a
 statement the model only wrote out). And it confirms what the first run showed about the
-certificate: on this benchmark the wrong answers are misread questions, and it flagged 6 of
-71. The certificate checks the calculation, not the reading of the question.
+certificate: on this benchmark most wrong answers are sound calculations of something else,
+and it flagged 6 of 71. The certificate checks the calculation, not what was asked.
 
 The 110-question sample in `docs/MODELS.md` had put `gpt-6.1-terra` at 86.4%; the full set
 gives 85.8%.

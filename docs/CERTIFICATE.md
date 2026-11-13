@@ -326,11 +326,13 @@ Every question, with both statements where there were two, is in
 `docs/benchmark-runs/question-review-bird-1.20.0.json`. To repeat it:
 `AI_QUESTION_REVIEW=true AI_QUESTION_REVIEW_MODEL=gpt-6.1-terra node -r dotenv/config test/bird/run.js`.
 
-### The same thing on questions it had never seen: not confirmed
+### The same thing on the earlier edition of the benchmark: no gain, and not a clean test
 
 Because the instructions were adjusted on the 2026 questions, the run was repeated, with
-nothing changed, on a set that played no part: the 500 questions of the earlier Mini-Dev
-release, which the benchmark keeps archived (2025-07-04), over the same databases. The bar
+nothing changed, on the 500 questions of the earlier Mini-Dev release, which the benchmark
+keeps archived (2025-07-04), over the same databases. An earlier version of this page
+called that set unseen. It is mostly another set: 13 of its questions have the same text
+as a 2026 question. Without those 13 the result below is the same (one answer gained). The bar
 was fixed before the run: three wrong answers turned right for each right one turned wrong,
 and fewer than 10 right ones turned wrong.
 
@@ -357,16 +359,36 @@ What the eleven changed answers show, read one by one:
   join, a "top five" answered with one row, a list of names left out) and three are a
   rounding or a missing value.
 - On these questions the reviewer said the statement answers the question for 125 of the
-  173 answers that were wrong. The 2026 questions are long and say exactly what to return;
-  these are short, and a wrong answer is more often a matter of which reading the reference
-  took. A second reader cannot find that from the question. This is our reading of the
-  difference between the two sets, and it was not tested.
+  173 answers that were wrong.
 
-So what can be said today: on questions that specify precisely what is wanted, a stronger
-model reviewing a cheaper one's query recovered a good share of its misread questions; on
-short, loosely worded questions it changed almost nothing, and broke about as much as it
-fixed. Which of the two a deployment looks like has to be measured there, with the
-evaluator (`docs/EVALUATION.md`), before turning it on.
+**Why the two sets differ.** An earlier version of this page put it down to the length of
+the questions. An independent review of both runs tested that and it does not hold: within
+the 2026 set the short questions are the ones most often corrected. It found two other
+things, which fit the data better.
+
+- **The 2025 references are unreliable.** The benchmark replaced that edition for this
+  reason. Of 22 answers scored wrong that the reviewer had accepted, the review found the
+  reference or its "evidence" at fault in 10 and a difference of format in 5. One case can
+  be seen without judgement: question 682 of 2025 and question 122 of 2026 are the same
+  question, the 2026 reference was corrected, and the answer scored wrong in 2025 is the
+  one the corrected reference gives.
+- **What the reviewer is good at is not in the 2025 set.** Its gain on the 2026 questions
+  comes from seeing the data (a 0 that means "not recorded", an empty string), and the 2026
+  questions were written around such data. The 2025 ones were not.
+
+So the run on the 2025 questions did not test the review: it measured how often a careful
+reader agrees with an answer key that is often wrong. What stands is narrower than either
+result: on one set, a stronger model that sees the data recovered a good share of a cheaper
+model's wrong answers. A second clean set is still missing, and until there is one the
+review stays off. Measure it on your own questions, with the evaluator
+(`docs/EVALUATION.md`), before turning it on.
+
+The same review found defects in the design, none fixed yet: the "cannot tell" verdict is
+discarded although it is where the reviewer names the doubt that one query would settle;
+the reviewer is not shown the column that is added up nor how many of its values are
+missing; it is not given what the certificate found; the correction goes back to the model
+that made the mistake; and the second answer is accepted on the certificate's rating, which
+does not say whether the objection was met.
 
 Every question of this run is in
 `docs/benchmark-runs/question-review-bird-2025-set-1.20.1.json`. To repeat it, point
@@ -375,10 +397,13 @@ Every question of this run is in
 How it came to this design is the next section: the same reviewer used as a warning did not
 pass, which is why it is used for a second attempt and shown as a reading.
 
-## Whether a misread question can be detected: the measurement behind the review
+## Whether a wrong reading can be detected: the measurement behind the review
 
 The checks above look at the calculation. Almost every wrong answer on a benchmark we did
-not write is of another kind: the query is sound and answers another question. Before
+not write is of another kind: the query is sound and is not what was asked. When this
+measurement was made we took that to be the question misread; a later review found it is
+more often the data misread (`docs/BIRD.md`). The measurement itself does not depend on
+which. Before
 building anything for that, we measured whether it can be detected at all.
 
 The two full runs of BIRD Mini-Dev (`docs/BIRD.md`) kept, for every question, the SQL the
@@ -397,7 +422,7 @@ more, with 5% of the right ones flagged or fewer.
 | Both judges agree | 66 of 285 (23.2%) | 15 of 285 (5.3%) |
 
 **It does not clear the bar, so no warning is built on it.** A judge finds between a third and
-half of the misread questions, which is far more than the certificate does on the same
+half of those wrong answers, which is far more than the certificate does on the same
 answers (6 of 71 and 10 of 214), and it flags about one right answer in six, which is more
 than a user would put up with. Requiring both judges brings the false alarms to the edge
 of the bar and the detection under it.

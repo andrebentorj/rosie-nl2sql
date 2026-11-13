@@ -81,8 +81,9 @@ involved ([docs/API.md](docs/API.md)). Off by default.
 **On a benchmark we did not write.** On [BIRD Mini-Dev](docs/BIRD.md) (500 public questions,
 11 databases, context built from the schema alone) Rosie scores 54.4% execution accuracy on
 PostgreSQL. The dataset card lists 51.8% for the same model with a fixed prompt: the same range, not a lead. There the
-certificate flagged 10 of 214 wrong answers: almost all of them were misread questions, which
-it does not catch. Accuracy follows the model: on the same 500 questions `gpt-6.1-terra`
+certificate flagged 10 of 214 wrong answers: almost all the others compute something sound
+that is not what was asked (most often because of how the data records a missing value),
+which it does not catch. Accuracy follows the model: on the same 500 questions `gpt-6.1-terra`
 scores 85.8%, at about one US cent per question ([docs/BIRD.md](docs/BIRD.md),
 [docs/MODELS.md](docs/MODELS.md)).
 
