@@ -148,6 +148,15 @@ node -r dotenv/config test/bird/run.js --limit 5       # first 5 questions of ea
 The report is written to `test/bird/results/` with every question's SQL, outcome and
 certificate verdict.
 
+## With the question review
+
+The same 500 questions with `gpt-6-luna` writing and `gpt-6.1-terra` reviewing each answer
+(`AI_QUESTION_REVIEW=true`, engine 1.20.0, 2026-11-13): **320 of 500 (64.0%)**, against 272
+for the writer alone. 43 wrong answers were turned right by the second attempt and 4 right
+ones were turned wrong. The reviewer's instructions were adjusted on answers to these same
+questions, so this is not yet a figure to quote in general. The detail and the caveats are
+in `docs/CERTIFICATE.md`, "The question review".
+
 ## Other models
 
 The run above uses the cheapest model on the list. The same 500 questions with a stronger

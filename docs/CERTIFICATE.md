@@ -260,6 +260,154 @@ that breaks the property is a defect, and the generator is where its shape gets 
 the guarantee is about the calculation only: a query that adds up the right records for the
 wrong question passes it (see the next section).
 
+## The question review
+
+The certificate checks the calculation and stays deterministic. The question review is a
+separate, optional step for what the certificate cannot see: a sound query that answers
+another question. It is off unless `AI_QUESTION_REVIEW=true`.
+
+After the answer is ready, one model call reads the question, the final statement, the first
+rows it returned and the values held by the columns it filters on, and gives one of four
+opinions: `answers`, `answers_on_this_data` (written unlike the question, same result on the
+values the column holds today), `does_not_answer`, `cannot_tell`, with one sentence. When it
+says `does_not_answer`, that sentence goes back once to the model that wrote the query, the
+way a certificate finding does. The second answer replaces the first only when it ran
+another statement and the certificate does not rate that one lower.
+
+- It is returned as `questionReview` (`verdict`, `reading`, `model`, `outcome`, and
+  `firstSql` when the answer was replaced). **It never changes the certificate's verdict**,
+  and it is an opinion: show `reading` as how the question was read, not as a finding.
+- The values the reviewer sees go through the validator and the row policies of the
+  request, so it reads nothing the caller could not have asked for. Masked columns are
+  neither read nor listed.
+- It does not run on an approved query (a person read that one) or on a compiled metric, nor
+  on an answer the certificate already sent back for a second attempt.
+- It costs one model call per answer, on `AI_QUESTION_REVIEW_MODEL` when set, and a second
+  attempt on the answers it objects to. `AI_QUESTION_REVIEW_REPAIR=false` keeps the opinion
+  and drops the second attempt.
+- **Use a stronger model than the one that writes.** The measurement below shows a model
+  reviewing its own query finds little.
+
+### What it did on BIRD Mini-Dev
+
+500 questions, PostgreSQL, `gpt-6-luna` writing and `gpt-6.1-terra` reviewing, engine 1.20.0,
+2026-11-13. The bar was fixed before the run: more than the 272 correct of the writer alone
+(`docs/BIRD.md`), and fewer than 10 right answers turned wrong by the review.
+
+| | |
+|---|---|
+| Correct, with the review | 320 of 500 (64.0%) |
+| Correct, `gpt-6-luna` alone, run of 2026-11-10 | 272 of 500 (54.4%) |
+| Answers the reviewer sent back | 111 |
+| of which the model wrote another statement that was accepted | 81 |
+| Wrong answer turned right | 43 |
+| Right answer turned wrong | 4 |
+| Still wrong, or still right, after the second attempt | 27 and 7 |
+
+**Both parts of the bar are met.** Read it with these in mind:
+
+- **The review accounts for 39 of the 48 answers gained.** Every replaced answer had its
+  first statement scored too: without the second attempts this same run would have had 281
+  correct. The other 9 are the difference between two runs of the same model.
+- **The reviewer's instructions were adjusted on these questions.** They were written after
+  reading fifteen answers of the earlier runs of this benchmark. The figure needs a set of
+  questions that played no part before it is quoted as a general one.
+- **It is one run.**
+- **166 answers are still wrong.** On 47 of them the reviewer said the statement answers the
+  question, on 58 it could not tell, and 59 it objected to and the second attempt did not
+  fix. A third of the questions stays out of its reach.
+- **`gpt-6.1-terra` alone gets 429 of 500** on the same questions. The review closes a part
+  of the gap between a cheap and a strong writer at the price of one strong call per
+  answer; it does not close it.
+
+Every question, with both statements where there were two, is in
+`docs/benchmark-runs/question-review-bird-1.20.0.json`. To repeat it:
+`AI_QUESTION_REVIEW=true AI_QUESTION_REVIEW_MODEL=gpt-6.1-terra node -r dotenv/config test/bird/run.js`.
+
+How it came to this design is the next section: the same reviewer used as a warning did not
+pass, which is why it is used for a second attempt and shown as a reading.
+
+## Whether a misread question can be detected: the measurement behind the review
+
+The checks above look at the calculation. Almost every wrong answer on a benchmark we did
+not write is of another kind: the query is sound and answers another question. Before
+building anything for that, we measured whether it can be detected at all.
+
+The two full runs of BIRD Mini-Dev (`docs/BIRD.md`) kept, for every question, the SQL the
+engine produced and whether its rows matched the reference. That is 285 wrong answers.
+Those, and 285 right ones drawn evenly from the two runs, were shown to a judge model: the
+question with its additional information, the tables the statement names, and the statement.
+The judge says whether the statement answers the question. No data is shown to it.
+
+The bar was fixed before the run: worth building at 30% of the wrong answers detected or
+more, with 5% of the right ones flagged or fewer.
+
+| Judge | Wrong answers it flags | Right answers it flags |
+|---|---|---|
+| `gpt-6-luna` | 87 of 285 (30.5%) | 50 of 285 (17.5%) |
+| `gpt-6.1-terra` | 134 of 285 (47.0%) | 44 of 285 (15.4%) |
+| Both judges agree | 66 of 285 (23.2%) | 15 of 285 (5.3%) |
+
+**It does not clear the bar, so no warning is built on it.** A judge finds between a third and
+half of the misread questions, which is far more than the certificate does on the same
+answers (6 of 71 and 10 of 214), and it flags about one right answer in six, which is more
+than a user would put up with. Requiring both judges brings the false alarms to the edge
+of the bar and the detection under it.
+
+Two things in the detail are worth more than the totals.
+
+- **The stronger judge is much weaker on its own SQL.** `gpt-6.1-terra` flags 54% of the
+  wrong answers `gpt-6-luna` wrote and 25% of the ones it wrote itself. The smaller judge
+  shows no such gap (30% and 32%), so this is one observation and not a rule, but it is
+  the reason the certificate is built on deterministic checks and not on a second opinion
+  from the model that wrote the answer.
+- **The false alarms we read are not nonsense.** We read ten of the fifteen right answers
+  that both judges flagged. The reasons given describe a difference between the statement
+  and the question: a filter written as a list of values where the question says "above
+  15", a count of rows where the question asks for distinct people, a code with a leading
+  zero. Execution says the rows match the reference on this data. We have not checked,
+  case by case, whether the statement would still be right on other data, so this is a
+  lead and not a finding. If it holds, a judge would need to see the data, or its remark
+  would have to be shown as the reading the query took and not as a warning.
+
+### The same judges, shown the data
+
+The fifteen right answers both judges flagged were then checked on the database. Nine are
+right only on today's data (the list of values covers every value the column holds now,
+nobody has two rows), two were the judge's mistake for not seeing how the column is stored
+(the code is kept with its leading zero), and four are a matter of how the question is read.
+So the judges were run again on the same 570 answers, this time shown the first rows the
+statement returned and the values held by the columns it filters on, with one more verdict
+to give: "answers on this data". The bar is the same.
+
+| Judge, shown the data | Wrong answers it flags | Right answers it flags |
+|---|---|---|
+| `gpt-6-luna` | 135 of 285 (47.4%) | 77 of 285 (27.0%) |
+| `gpt-6.1-terra` | 109 of 285 (38.2%) | 8 of 285 (2.8%) |
+| `gpt-6.1-terra`, 416 right answers it had not been adjusted on | not measurable | 23 of 416 (5.5%) |
+
+**The stronger judge reaches the bar on the answers the instructions were adjusted on and
+sits just above it on the ones they were not (5.5% against 5%). That is not a pass, so
+no warning is built on it.** What the run does show:
+
+- **Data helps a strong judge and hurts a weak one.** `gpt-6.1-terra` went from 15.4% to
+  2.8% of right answers flagged. `gpt-6-luna` went from 17.5% to 27.0%: with more to read
+  it finds more to object to.
+- **It is a check on a cheaper model's work, not on its own.** `gpt-6.1-terra` flags 45% of
+  the wrong answers `gpt-6-luna` wrote (3.5% false alarms there) and 17% of the wrong
+  answers it wrote itself.
+- **The judge abstains often.** It said "cannot tell" on 83 of the 285 wrong answers and 53
+  of the right ones. A check built on it would be silent on about a quarter of the answers.
+- **Wrong answers are all in the main selection**, so detection has no figure free of the
+  adjustment. The adjustment was aimed at false alarms, which is why those were measured
+  again on unseen answers.
+
+The measurement is `test/intent/measure.js` (`--list` shows the cases and the prompt without
+calling a model), and every verdict, with the sentence the judge gave, is in
+`docs/benchmark-runs/question-reading-1.19.1.json`. `test/intent/gather.js` collects the data shown to the judge and calls no
+model. The first run cost about 345,000 input tokens per judge and the run with data about
+640,000.
+
 ## What is measured
 
 `docs/BENCHMARK.md` reports, on our own 198-question suite, how many trap questions went out

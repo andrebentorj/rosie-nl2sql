@@ -74,6 +74,12 @@ Response `200`:
 - `approval` (not shown above) is `null` unless the answer ran an approved query; then it
   carries `id`, `question`, `approvedBy`, `approvedOn`, `reviewBy` and the `params` used
   (`docs/APPROVED_QUERIES.md`).
+- `questionReview` (not shown above) is `null` unless `AI_QUESTION_REVIEW=true` and the review
+  ran; then it carries `verdict` (`answers`, `answers_on_this_data`, `does_not_answer`,
+  `cannot_tell`), `reading` (one sentence), `model`, `outcome` (`corrected`, `not_improved`,
+  `unchanged`, `failed` or `null`) and `firstSql` when the answer was replaced. It is an
+  opinion of a model and never changes `certificate` (`docs/CERTIFICATE.md`, "The question
+  review").
 - `metric` (not shown above) is `null` unless the statement was compiled by the engine from a
   declared metric; then it carries the metric's `name`, `expression`, `table`, the
   `dimensions` and `filters` used and the `joins` added (`docs/METRICS.md`).
