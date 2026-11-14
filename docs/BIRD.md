@@ -215,9 +215,10 @@ Both columns are the runs with the question review on. What it says:
   sent back to the model only for a column the context declares, and these contexts declare
   none. Since 1.23.0 it can be sent as a question without a declaration
   (`AI_CERTIFICATE_REPAIR_UNDECLARED`).
-- **What to show is a small part.** Answers with the reference's rows under other columns
-  are 3% of the wrong ones on the 2026 questions and 14% on the 2025 ones, where the
-  questions say less about what to return.
+- **What to show is a small part, for the small model.** Answers with the reference's rows
+  under other columns are 3% of its wrong ones on the 2026 questions and 14% on the 2025
+  ones, where the questions say less about what to return. For the stronger model it is the
+  largest group, 14 of 63 ("What the stronger model still gets wrong").
 - The run on the 2025 questions also asked for a clarification 31 times, each counted as
   wrong by the benchmark's rule.
 
@@ -300,16 +301,18 @@ coin would give about four times in ten. What can be said is narrower.
 
 - **Where the data records a missing value, it helps this model as well**: superhero 38 to
   48 of 50, thrombosis_prediction 75 to 81 of 86.
-- **One note cost four answers.** california_schools went from 38 to 32 of 49. In four of
-  the nine lost there, the question gives a school code of 13 digits and the column holds
-  14 with a zero in front. Without the note the model looked at the column and added the
+- **One note cost answers.** california_schools went from 38 to 32 of 49. In five of the
+  nine lost there (13, 16, 17, 32, 35; we first counted four), the question gives a school
+  code of 13 digits and the column holds 14 with a zero in front. Without the note the model looked at the column and added the
   zero. With the note ("a code of 14 digits kept as text, with leading zeros") it took the
   note as enough, looked at nothing, and compared the 13 digits. The note now says to pad a
-  shorter code given in the question; with that wording the four came out right with this
-  model and three of four with `gpt-6-luna`. Four questions, tried once: a correction, not
-  a measurement.
-- **The second attempt about two figures was offered three times and replaced nothing.**
-  With this model it is close to unused, so the difference here is the profile.
+  shorter code given in the question; with that wording four of them (13, 16, 17, 35) came
+  out right with this model and three of the four with `gpt-6-luna`. Four questions, tried
+  once: a correction, not a measurement.
+- **The second attempt about two figures was not offered in this run.** The three second
+  attempts on record (13, 16, 35) were for a filter value that is not in the column, and
+  replaced nothing. The two wrong answers flagged for repeated rows (239, 306) are grouped
+  answers, which are not sent back. So the difference here is the profile.
 - **The certificate on this run**: 22 answers marked `CROSS_CHECKED`, none of them wrong;
   10 of the 63 wrong answers flagged, 14 of the 437 right ones flagged.
 - **One answer counted right had no result in the engine.** On question 491 the last
@@ -320,6 +323,60 @@ coin would give about four times in ten. What can be said is narrower.
   `query_failed`), and the runner counts it as no answer.
 
 Every question is in `docs/benchmark-runs/bird-column-profile-terra-1.23.0.json`.
+
+### What the stronger model still gets wrong
+
+The 63 wrong answers of that run, read one at a time on 2026-11-14 with the data at hand:
+both statements run, the data queried for why they differ, and the engine's statement then
+changed in the one respect the cause names to see that it returns the reference's rows (it
+did, 63 of 63). One reader, an AI agent, not reviewed by a person. What a statement does
+differently is reproducible; whether a question is ambiguous or a reference arbitrary is a
+judgement, and 27 of the 63 labels are marked "likely" for that reason. Every question is in
+`docs/benchmark-runs/bird-terra-wrong-answers-1.23.0.json`.
+
+| Cause | Answers | What it is |
+|---|---|---|
+| The same answer in another shape | 14 | An extra column (7), or a unit, a type, an order, a layout, fewer stored digits. |
+| How the data writes a value | 10 | Seven are one thing: a school code given with 13 digits against a text column of 14 with a zero in front. Then a decimal in a number kept as text, a list in one cell. |
+| Two defensible readings of the question | 10 | |
+| Grain | 8 | Six are a count of rows where the question counts things (cards, drivers, members). |
+| What a column or a code means | 6 | Which of two similar columns, what `-` or `future` stands for, the time zone of a stored time. The data cannot say. |
+| The wrong table or column | 7 | In 4 the question or the data settles which; in 3 two sources disagree and nothing does. |
+| The reference is wrong or arbitrary, shown on the data | 3 | |
+| A cast that loses digits | 2 | A `real` column cast to `NUMERIC` keeps six significant digits in PostgreSQL: 2052187.1 becomes 2052190. |
+| An empty group, a missing value | 3 | |
+
+How to read it.
+
+- **It is another kind of error than the small model's.** How the data records a MISSING
+  value, the commonest cause in the sample of the small model's errors read earlier, is 1
+  of these 63. With this model and the profile, 14 are answers a person would accept, about
+  15 are the benchmark's own (ambiguous questions and references), and the errors a customer
+  would meet are how a value is written, grain, the meaning of a column, and the choice of
+  source.
+- **The largest single cause is one identifier format, and the note of 1.23.0 made it
+  worse.** Seven answers are the unpadded school code; five of them (13, 16, 17, 32, 35) are
+  right without the profile, and two (9, 39) are wrong in all three runs of this model. The
+  wording of that note was changed after the run (see above).
+- **The certificate saw part of it and nothing came of it.** Three of the seven were flagged
+  for a filter value that is not in the column, a second attempt ran on each and replaced
+  nothing. The other four were not flagged: the empty result sat in a subquery, or the
+  certificate had nothing to check. Looking up a value the question gives before answering
+  is what these call for, and the engine does not do it yet.
+- **A count of rows is a grain error the certificate cannot see.** The repeated-rows check
+  looks at sums and averages. It passed all six `COUNT(*)` answers that counted printings
+  for cards or results for drivers. The two grain errors it did flag (239, 306) are grouped
+  answers, which are not sent back to the model.
+- **By cause, 6 of the 10 flags on wrong answers name the error** (13, 16, 35, 162, 239,
+  306) and 4 are beside it (157, 304, 467, 483).
+- **A ceiling, not a forecast.** If every error the engine could address were fixed and
+  nothing else broke (23 answers), this run would read 460 of 500; with the 14 answers in
+  another shape, 474. The profile itself gained 38 answers and lost 30 on this model, so no
+  fix is free, and 18 of the 63 were right in both other runs of the model.
+- **Not determined**: what the notes of that run said (they are not stored), what the three
+  second attempts wrote, whether two of the answers under "meaning" (259, 288, a start time
+  converted from UTC) are the engine being right against the reference, and whether a
+  second reader would draw the same lines.
 
 ## With the benchmark's column descriptions: no gain
 

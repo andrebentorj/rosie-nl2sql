@@ -394,7 +394,8 @@ first question, the engine tables are not where `DB_ENGINE_DATABASE` points (Ste
 
 ## Step 6. Plug the widget into the host app's front end
 
-Rosie ships a self-contained Web Component. **Two lines of HTML, no file copy.**
+Rosie ships a self-contained Web Component. **Two lines of HTML, no file copy.** What it
+shows once it is on the page is in [WIDGET.md](WIDGET.md).
 
 ### 6a. Load the bundle from the backend (recommended)
 

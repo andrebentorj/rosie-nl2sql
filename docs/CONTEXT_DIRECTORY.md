@@ -107,8 +107,22 @@ brand, not the theme). All keys optional; colors are hex only, radius is `<n>px`
 ```
 
 Also available: `surface`, `surfaceAlt`, `surfaceDim`, `ink`, `inkSoft`, `inkFaint`,
-`border`, `borderSoft`. When a theme is set it also overrides the widget's automatic
-dark-mode palette (explicit beats auto).
+`border`, `borderSoft`. A key that is set overrides the widget's automatic dark-mode
+value for that key (explicit beats auto).
+
+How the theme is applied (widget 2026.11.9):
+
+- **A theme that names `surface` decides light or dark for the whole widget.** The keys it
+  does not name (inks, borders, the colours of the verdicts) follow that surface and not the
+  operating system: a white `surface` on a dark system renders the widget light throughout.
+  Without `surface`, the widget follows the system.
+- **The header runs from `primary` to `primaryDeep`**, and the results bar and the send
+  button use `primaryDeep`. `primarySoft` is still accepted and no longer colours the header.
+- **Text on those colours is white, unless white would not be readable.** When `primary` or
+  `primaryDeep` leaves white text under 4.5:1, the widget writes dark text on them and says
+  so in the browser console.
+- The verdict colours (passed, caution, contradicted, not checked, approved) are not
+  themable: they mean the same thing in every project.
 
 ### White label (optional)
 

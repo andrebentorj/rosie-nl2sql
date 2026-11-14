@@ -205,10 +205,15 @@ same model.
   behind is what chance gives four times in ten.
 - **Accuracy follows the model first.** `gpt-6.1-terra` costs about one US cent per
   question and is what we recommend for a pilot ([docs/MODELS.md](docs/MODELS.md)).
-- **The certificate caught few of these errors**: 10 of 214 wrong answers in the first run.
-  Almost all the others compute something sound that is not what was asked, which it does
-  not catch. An independent reading of a sample of them found about half come from how the
-  data records a missing value, which is what the profile addresses.
+- **The certificate caught few of these errors**: 10 of 214 wrong answers in the first run
+  of the small model. Almost all the others compute something sound that is not what was
+  asked, which it does not catch. An independent reading of a sample of them found about
+  half come from how the data records a missing value, which is what the profile addresses.
+- **The stronger model's errors are of another kind.** Of its 63 wrong answers with the
+  profile, read one at a time, 14 are the same answer in another shape, about 15 are
+  ambiguous questions or references that do not hold, and the rest are how a value is
+  written (an identifier with a leading zero), grain, and which column was meant. A missing
+  value is 1 of the 63 ([docs/BIRD.md](docs/BIRD.md)).
 
 [docs/BIRD.md](docs/BIRD.md) lists what went wrong, including a hole in the injection filter
 that this benchmark found and that is now fixed, and the rule for when a gain is claimed.
@@ -285,6 +290,7 @@ directory. The contract is in [contexts/example/README.md](docs/CONTEXT_DIRECTOR
 | I want to | Read |
 |---|---|
 | Install it | [docs/INSTALL.md](docs/INSTALL.md) |
+| What the widget shows, and what the character does | [docs/WIDGET.md](docs/WIDGET.md) |
 | See how accurate it is, and reproduce the numbers | [docs/BENCHMARK.md](docs/BENCHMARK.md) |
 | Choose a model, and see how much accuracy it buys | [docs/MODELS.md](docs/MODELS.md) |
 | Know exactly what the Answer Certificate checks | [docs/CERTIFICATE.md](docs/CERTIFICATE.md) |

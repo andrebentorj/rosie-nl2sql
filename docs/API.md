@@ -245,7 +245,7 @@ Metadata the widget needs before the first question, plus the security gate stat
 {
   "name": "Sales", "fullName": "…", "description": "…", "welcomeMessage": "…",
   "suggestions": [ "…" ], "aiDisclaimer": "…", "governance": { "owner": "…" }, "theme": null,
-  "brand": null, "widgetVersion": "2026.11.8",
+  "brand": null, "widgetVersion": "2026.11.9",
   "maxInputLength": 2000,
   "securityHold": false, "securityCode": null, "securityMessage": null, "supportContact": null
 }
