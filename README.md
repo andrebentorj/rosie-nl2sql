@@ -24,10 +24,11 @@ the last record, and Rosie says so instead of handing over a total that looks co
 
 | Checked and confirmed | Flagged |
 |---|---|
-| ![An answer to "How many tracks were sold in 2024?" with the note "Cross-checked: Re-derived independently over distinct InvoiceLine records and got the same value"](docs/assets/widget-verified.png) | ![An answer with the warning that the requested period is not fully covered by the data](docs/assets/widget-flagged.png) |
+| ![An answer card headed "Cross-checked": 447 tracks sold in 2024, with the note "Calculation cross-checked. Re-derived over distinct InvoiceLine records and got the same value. This checks the calculation, not whether the question was understood."](docs/assets/widget-verified.png) | ![An answer card headed "Read with care": a revenue figure with the warning that the requested period is not fully covered by the data](docs/assets/widget-flagged.png) |
 
-The pictures are from an earlier version. The note under a cross-checked answer now ends
-with "This checks the calculation, not whether the question was understood."
+Both are the widget of this version showing answers the engine gave on the demo database.
+The verdict is the first thing on the card, and the character in the corner carries it too
+([docs/WIDGET.md](docs/WIDGET.md)).
 
 A query that runs and returns a plausible number is the failure that hurts, because nobody
 looks twice. An example written to show it, on the demo data: a join that repeats each

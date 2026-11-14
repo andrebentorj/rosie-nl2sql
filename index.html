@@ -19,7 +19,7 @@
         --accent: #e8795f; --accent-ink: #1a0f0b; --ok: #5cc291; --warn: #e0a24a; --code-bg: #26241f; }
 }
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
 a { color: var(--accent); }
 .wrap { max-width: 1040px; margin: 0 auto; padding: 0 20px; }
@@ -32,16 +32,16 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; line-height: 1.15; let
 h1 { font-size: clamp(36px, 6vw, 60px); max-width: 16ch; }
 h2 { font-size: clamp(27px, 3.6vw, 36px); max-width: 24ch; }
 h3 { font-size: 20px; }
-.hero { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 48px; align-items: center; padding: 56px 0 72px; }
+/* The two pictures get a row of their own: beside the headline they were too small to read. */
+.hero { display: grid; grid-template-columns: 1fr; gap: 40px; align-items: center; padding: 56px 0 72px; }
 .lede { font-size: 20px; color: var(--muted); max-width: 46ch; margin: 22px 0 30px; }
 .btn { display: inline-block; padding: 13px 22px; border-radius: 8px; font-weight: 600; text-decoration: none; font-size: 16px; border: 1px solid var(--line); color: var(--ink); background: var(--surface); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .btn + .btn { margin-left: 10px; }
-.shots { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.shots { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; max-width: 900px; }
 .shots figure { margin: 0; }
 .shots img { width: 100%; height: auto; display: block; border-radius: 12px; border: 1px solid var(--line); box-shadow: 0 12px 32px rgba(0,0,0,.10); }
 .shots figcaption { font-size: 13px; color: var(--muted); margin-top: 8px; }
-.shots figure:nth-child(2) { margin-top: 36px; }
 section { padding: 68px 0; border-top: 1px solid var(--line); }
 .kicker { font: 600 13px var(--sans); letter-spacing: .09em; text-transform: uppercase; color: var(--accent); margin-bottom: 12px; }
 .sub { color: var(--muted); max-width: 62ch; margin: 16px 0 0; }
@@ -49,7 +49,8 @@ section { padding: 68px 0; border-top: 1px solid var(--line); }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 24px; }
 .figure { font: 600 40px var(--serif); line-height: 1.1; }
 .figure.bad { color: var(--warn); text-decoration: line-through; text-decoration-thickness: 2px; }
-.figure.good { color: var(--ok); }
+/* The second figure is the one derived another way. It is not painted as "the right one". */
+.figure.good { color: var(--ink); }
 .card p { margin: 10px 0 0; color: var(--muted); font-size: 16px; }
 .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 34px; }
 .grid3 .card h3 { margin-bottom: 8px; }
@@ -105,11 +106,11 @@ footer { border-top: 1px solid var(--line); padding: 28px 0 44px; color: var(--m
     </div>
     <div class="shots">
         <figure>
-            <img src="assets/widget-verified.png" width="450" height="680" alt="Rosie answering a question about tracks sold, with the note: cross-checked, re-derived independently and got the same value">
+            <img src="assets/widget-verified.png" width="500" height="720" alt="An answer card headed Cross-checked: 447 tracks sold in 2024, with the note that the figure was re-derived over distinct records and got the same value, and that this checks the calculation, not whether the question was understood">
             <figcaption>Re-derived by a second route. Same value.</figcaption>
         </figure>
         <figure>
-            <img src="assets/widget-flagged.png" width="450" height="680" alt="Rosie answering a question with a warning that the requested period is not fully covered by the data">
+            <img src="assets/widget-flagged.png" width="500" height="720" alt="An answer card headed Read with care: a revenue figure with the warning that the data ends on 2025-12-22, before the end of the period asked for">
             <figcaption>The period asked for runs past the data. Rosie says so.</figcaption>
         </figure>
     </div>
@@ -143,7 +144,7 @@ footer { border-top: 1px solid var(--line); padding: 28px 0 44px; color: var(--m
         <div class="card"><h3>Metrics the engine compiles</h3><p>Declare "revenue" once, or import it from dbt or Cube. For a declared metric Rosie writes the query itself, formula and joins, so a join cannot inflate it.</p></div>
         <div class="card"><h3>Queries a person approved</h3><p>A query someone reviewed for a recurring question is run unchanged when the question comes back, and the answer says who approved it.</p></div>
         <div class="card"><h3>A second attempt, before you see it</h3><p>When a check names a defect, the evidence goes back to the model once. The second answer replaces the first only on evidence about the figure, such as the same filters and the total the checks had already computed over distinct records. A clean verdict alone is not enough.</p></div>
-        <div class="card"><h3>Says what was not checked</h3><p>Every answer carries a verdict. When no check could cover it, the answer says "not checked" and why, instead of looking the same as one that passed.</p></div>
+        <div class="card"><h3>Says what was not checked</h3><p>An answer the checks cover says what they found, above the number. When no check could cover it, the answer says "not checked" and why, instead of looking the same as one that passed.</p></div>
         <div class="card"><h3>What it does not do</h3><p>The automatic checks cover the structure of a calculation, not whether a question was understood. A misread question, or data read the wrong way, passes every one of them. A query a person approved covers the question it was approved for; for the rest, give the model a profile of the data and measure on your own questions.</p></div>
     </div>
 </section>
