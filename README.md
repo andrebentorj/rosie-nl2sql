@@ -83,8 +83,10 @@ involved ([docs/API.md](docs/API.md)). Off by default.
 PostgreSQL. The dataset card lists 51.8% for the same model with a fixed prompt: the same range, not a lead. There the
 certificate flagged 10 of 214 wrong answers: almost all the others compute something sound
 that is not what was asked (most often because of how the data records a missing value),
-which it does not catch. Accuracy follows the model: on the same 500 questions `gpt-6.1-terra`
-scores 85.8%, at about one US cent per question ([docs/BIRD.md](docs/BIRD.md),
+which it does not catch. With a profile of each column read from the data
+(`npm run profile-columns`: where 0 or `-` stands for "not recorded", codes kept as text) the
+same model scored 65.8% in one run, on the benchmark the profile was developed on. Accuracy
+follows the model first: on the same 500 questions `gpt-6.1-terra` scores 85.8% without it, at about one US cent per question ([docs/BIRD.md](docs/BIRD.md),
 [docs/MODELS.md](docs/MODELS.md)).
 
 The benchmark page also lists what went wrong, including a hole in the injection filter that

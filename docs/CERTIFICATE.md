@@ -139,6 +139,14 @@ The model either runs a corrected query or keeps its answer.
 It costs one or two extra model calls on the answers it applies to and shares the request's
 tool-call and query budgets. `AI_CERTIFICATE_REPAIR=false` turns it off.
 
+Where the context declares nothing about the column, two differing figures are not a
+defect and nothing is sent back. `AI_CERTIFICATE_REPAIR_UNDECLARED=true` sends them as a
+question ("once per joined row it gives A, once per record it gives B: which does the
+question ask for?") and accepts a second answer only when it returns B, or B rounded, under
+the same filters. It is off by default and meant for a small model: on a benchmark we did
+not write, a small model's answer carrying that difference was wrong in 44 cases of 45, and
+a strong model's in 1 of 7 (`docs/BIRD.md`).
+
 ## When a check does not run
 
 `skipped` holds one entry per check that was due and did not run:

@@ -193,18 +193,82 @@ Both columns are the runs with the question review on. What it says:
   the reference's was 3 of the 65. The classification is that reviewer's, by inspection.
 - **So the remedy is knowledge of the data, and it can be checked.** "Is there a weight of
   0?" is one query. What that calls for is a profile of each column in the catalog (nulls,
-  zeros, empty strings, markers such as `-`), which the engine does not build yet. Metrics
-  and approved queries do not address this kind of error.
+  zeros, empty strings, markers such as `-`). The engine builds it since 1.23.0 and the
+  result is the next section. Metrics and approved queries do not address this kind of error.
 - **The certificate already points at part of them and the engine does not act on it.** With
   `gpt-6-luna`, an answer carrying a fan-out or grain warning was wrong in 25 of 25, 12 of
   13 and 7 of 7 cases in the three runs; with `gpt-6.1-terra`, in 1 of 7. The warning is
   sent back to the model only for a column the context declares, and these contexts declare
-  none.
+  none. Since 1.23.0 it can be sent as a question without a declaration
+  (`AI_CERTIFICATE_REPAIR_UNDECLARED`).
 - **What to show is a small part.** Answers with the reference's rows under other columns
   are 3% of the wrong ones on the 2026 questions and 14% on the 2025 ones, where the
   questions say less about what to return.
 - The run on the 2025 questions also asked for a clarification 31 times, each counted as
   wrong by the benchmark's rule.
+
+## With a profile of the data: 329 of 500
+
+The review quoted above proposed a remedy and a figure to test it against: give the model a
+profile of each column, read from the data, and a small model should reach 60% to 63%;
+under 58% and the diagnosis was wrong. The bar was fixed before the run.
+
+What changed, all of it built from the database alone and none of it from the questions:
+
+- **A profile of each column** (`npm run profile-columns`, `scripts/lib/column-profile.js`):
+  how many rows hold no value, how many hold 0 and what the smallest other value is, blank
+  strings, placeholders in use (`-`, `N/A`, `No Colour`), numbers and zero-padded codes
+  kept as text. Where there is something a query writer has to know, the column gets a
+  one-line note in the prompt: `weight_kg {0 in 23% of rows, the smallest other value is
+  14: 0 may mean "not recorded"}`.
+- **The two figures of a repeated average or total go back to the model as a question**
+  where the context declares nothing (`AI_CERTIFICATE_REPAIR_UNDECLARED`), and its second
+  answer is accepted only when it returns the figure over distinct records.
+- **A query run to look around is never returned as the answer** (1.22.0).
+
+`gpt-6-luna`, engine 1.23.0, 2026-11-13, one pass, no column descriptions, no question review.
+
+| | Correct of 500 |
+|---|---|
+| This run | **329 (65.8%)** |
+| The three earlier runs of the same model | 272, 281, 272 |
+
+| Database | Before (run with descriptions) | This run |
+|---|---|---|
+| superhero | 14 of 50 | 39 |
+| formula_1 | 37 of 55 | 51 |
+| thrombosis_prediction | 59 of 86 | 66 |
+| european_football_2 | 18 of 31 | 22 |
+| california_schools | 20 of 49 | 23 |
+| the other six | 124 of 229 | 128 |
+
+How to read it.
+
+- **It is above the predicted range and well outside what one run differs from another**:
+  48 to 57 answers over each of the three earlier runs, where those differ from each other
+  by 9. Of the 145 questions wrong in all three, 57 are right here.
+- **It also lost answers.** Of the 187 questions right in all three earlier runs, 15 are
+  wrong here. We read the 15. Most are the ordinary variation of the model (another
+  filter, another column). One is caused by a note: a column where `-` is a test result
+  ("negative") and the commonest value, which the note called a possible "not recorded",
+  and the model left those rows out. The note for a placeholder that is the commonest value
+  of a column with few distinct values was changed after this run to say only that, and not
+  what it may mean.
+- **The parts were not measured apart.** The run did not record how often the second
+  attempt replaced an answer, so how much of the gain is the profile and how much is the
+  question about two figures is not known. On twelve questions tried beforehand the profile
+  alone turned eight.
+- **It was developed on this benchmark.** The profile reads only the data, but which facts
+  it reports, and at what thresholds, was decided after an analysis of wrong answers to
+  these same questions. The earlier edition of the benchmark cannot confirm it (its
+  references are unreliable and its data traps are few). A second benchmark with dirty data
+  is what would, and there is none here yet.
+- **It is one pass.** A third of the questions change outcome between runs of this model.
+- **`gpt-6.1-terra` alone still gets 429**, without any of this. The profile has not been
+  run with it.
+
+Every question is in `docs/benchmark-runs/bird-column-profile-1.23.0.json`. To repeat it:
+`BIRD_PROFILE=true AI_CERTIFICATE_REPAIR_UNDECLARED=true node -r dotenv/config test/bird/run.js`.
 
 ## With the benchmark's column descriptions: no gain
 
