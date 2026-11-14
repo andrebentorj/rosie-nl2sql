@@ -264,11 +264,42 @@ How to read it.
   references are unreliable and its data traps are few). A second benchmark with dirty data
   is what would, and there is none here yet.
 - **It is one pass.** A third of the questions change outcome between runs of this model.
-- **`gpt-6.1-terra` alone still gets 429**, without any of this. The profile has not been
-  run with it.
+- **`gpt-6.1-terra` alone gets 429** without any of this; with it, 437 (next section).
 
 Every question is in `docs/benchmark-runs/bird-column-profile-1.23.0.json`. To repeat it:
 `BIRD_PROFILE=true AI_CERTIFICATE_REPAIR_UNDECLARED=true node -r dotenv/config test/bird/run.js`.
+
+### The same with the stronger model: 437 of 500, and not a proven gain
+
+`gpt-6.1-terra`, same configuration, 2026-11-13, one pass. The bar was fixed before the run:
+434 or more and the profile helps this model too, 424 to 433 is what one pass varies, under
+424 it gets in the way.
+
+| | Correct of 500 |
+|---|---|
+| With the profile | **437 (87.4%)** |
+| Without it (engine 1.18.0, 2026-11-12) | 429 (85.8%) |
+
+It passed the bar, and the bar was too loose. Question by question, 38 are right here that
+were wrong there and 30 the other way: 68 questions changed and the balance is 8, which a
+coin would give about four times in ten. What can be said is narrower.
+
+- **Where the data records a missing value, it helps this model as well**: superhero 38 to
+  48 of 50, thrombosis_prediction 75 to 81 of 86.
+- **One note cost four answers.** california_schools went from 38 to 32 of 49. In four of
+  the nine lost there, the question gives a school code of 13 digits and the column holds
+  14 with a zero in front. Without the note the model looked at the column and added the
+  zero. With the note ("a code of 14 digits kept as text, with leading zeros") it took the
+  note as enough, looked at nothing, and compared the 13 digits. The note now says to pad a
+  shorter code given in the question; with that wording the four came out right with this
+  model and three of four with `gpt-6-luna`. Four questions, tried once: a correction, not
+  a measurement.
+- **The second attempt about two figures was offered three times and replaced nothing.**
+  With this model it is close to unused, so the difference here is the profile.
+- **The certificate on this run**: 22 answers marked `CROSS_CHECKED`, none of them wrong;
+  10 of the 63 wrong answers flagged, 14 of the 437 right ones flagged.
+
+Every question is in `docs/benchmark-runs/bird-column-profile-terra-1.23.0.json`.
 
 ## With the benchmark's column descriptions: no gain
 
