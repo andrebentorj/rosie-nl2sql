@@ -1,4 +1,4 @@
-# Connecting Rosie to Claude Desktop — step by step
+# Connecting Rosie to Claude Desktop: step by step
 
 > Practical walkthrough. The reference (what each tool does, what is deliberately not
 > exposed, how authorization works) is in `docs/MCP_SERVER.md`.
@@ -21,7 +21,7 @@ checkout already filled in.
 
 The steps below do the same by hand and explain each part.
 
-## Step 1 — Confirm the server starts
+## Step 1. Confirm the server starts
 
 From the repository root:
 
@@ -32,7 +32,7 @@ npm run test:mcp
 Expect a last line reading `ALL ... MCP CASES PASS`. This drives the real server the same way Claude Desktop
 will, so if it passes, the problem in any later step is configuration, not the server.
 
-## Step 2 — Find your node binary
+## Step 2. Find your node binary
 
 Claude Desktop does not always inherit your shell's `PATH`, which is the single most common
 reason a server fails to start. Get the absolute path:
@@ -44,7 +44,7 @@ which node
 Typical answers: `/usr/local/bin/node`, `/opt/homebrew/bin/node`, or something under
 `~/.nvm/versions/node/…/bin/node` if you use nvm. Copy whatever it prints.
 
-## Step 3 — Edit the Claude Desktop configuration
+## Step 3. Edit the Claude Desktop configuration
 
 Open the file (create it if it does not exist):
 
@@ -72,12 +72,12 @@ from the file you already maintain.
 If the file already had other servers in it, add only the `"rosie"` block inside the
 existing `mcpServers` object rather than pasting a second one.
 
-## Step 4 — Restart Claude Desktop completely
+## Step 4. Restart Claude Desktop completely
 
 Quit the application from the menu (⌘Q on macOS), do not just close the window. It only
 reads the configuration at startup.
 
-## Step 5 — Check that Rosie is connected
+## Step 5. Check that Rosie is connected
 
 Open the tools or connectors list in Claude Desktop. You should see **rosie** with eight
 tools: `ask_data`, `explain_answer`, `export_answer`, `list_available_data`, `list_metrics`,
@@ -102,7 +102,7 @@ Exercises `list_available_data`. You should get the project description and its 
 Exercises the full pipeline. The answer arrives with an Answer Certificate: the coverage
 check reports what fraction of rows the filter kept.
 
-**3. A question whose premise is wrong** — this is where Rosie differs from a plain SQL bot:
+**3. A question whose premise is wrong.** This is where Rosie differs from a plain SQL bot:
 
 > How many orders have status 'archived'?
 
@@ -135,7 +135,8 @@ An installation created before the cross-check existed lacks one column in the c
 table; if the engine reports it missing, add it:
 
 ```sql
-ALTER TABLE rosie_answer_certificate ADD COLUMN cross_check TEXT NULL AFTER provenance;
+ALTER TABLE rosie_answer_certificate ADD COLUMN cross_check TEXT NULL;        -- MySQL, PostgreSQL
+ALTER TABLE rosie_answer_certificate ADD cross_check NVARCHAR(MAX) NULL;      -- SQL Server
 ```
 
 ---
@@ -165,14 +166,20 @@ somewhere. It defaults to on.
 `~/Library/Logs/Claude/mcp-server-rosie.log`. That file is the first place to look for any
 failure not covered above.
 
+**The audit file is not where you expect.** Its default path is relative to the directory
+the client starts the server from. Set `ROSIE_AUDIT_FILE` to an absolute path in `.env`.
+
+**An edit to the context is not picked up.** The server reads the context when the client
+starts it. Quit and reopen the client.
+
 ---
 
 ## A note on what this is and is not
 
 This is the **local** phase: over stdio the trust boundary is your machine, so there is no
 authentication step and `ROSIE_MCP_USER` only labels the audit rows. Exposing Rosie to other
-people over the network needs the remote transport and real OAuth identity, which is a
-separate phase and depends on your identity provider.
+people over the network is done with the remote transport (`npm run mcp:http`), which
+verifies the tokens of your identity provider: see `docs/MCP_SERVER.md`, "Remote transport".
 
 Everything you ask through Claude Desktop is audited exactly like a question asked in the
 widget, including the certificate, so the governance trail does not have a hole in it.

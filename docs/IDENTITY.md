@@ -19,7 +19,7 @@ ROSIE_JWT_JWKS_URL=https://login.example.com/.well-known/jwks.json
 |---|---|
 | `ROSIE_JWT_ISSUER` | Expected `iss`. Setting it turns JWT verification on. |
 | `ROSIE_JWT_AUDIENCE` | Expected `aud`. Required: without it a token issued for another service would be accepted. Comma-separated for several. |
-| `ROSIE_JWT_JWKS_URL` | Where the provider publishes its keys. Must be https. Keys are cached and re-fetched when a new key id appears. |
+| `ROSIE_JWT_JWKS_URL` | Where the provider publishes its keys. Must be https (plain http is accepted only for `localhost`, `127.0.0.1` and `[::1]`, for tests). Keys are cached and re-fetched when a new key id appears. |
 | `ROSIE_JWT_JWKS` | Alternative to the URL: the public key set itself, as JSON. For air-gapped installs. |
 | `ROSIE_JWT_ALGORITHMS` | Default `RS256,ES256,PS256,EdDSA`. |
 | `ROSIE_JWT_USER_CLAIM` | Claim used as the user id. Default `sub`. |
@@ -75,6 +75,18 @@ the shared-token alternative are in [OPERATIONS.md](OPERATIONS.md).
 
 Pass the user's access token as the widget's `api-token` attribute, refreshed by the host
 application when it rotates. The token must be issued for the audience configured above.
+
+This is the supported way to authenticate the widget under JWT, and the one case where
+`api-token` belongs in a production page: the token is the user's own and says only what
+that user may see. `docs/INSTALL.md` forbids putting the shared `ROSIE_API_TOKEN` there, and
+the widget logs a console warning ("The api-token attribute exposes the deployment secret
+...") whenever the attribute is set, because it cannot tell the two kinds of token apart.
+With a user's JWT that warning is expected. It is a real problem only when the value is the
+shared token.
+
+With a JWT in the page, the widget can call the backend directly or through your proxy. If
+the proxy adds its own `Authorization` header, it replaces the user's token: remove that
+header from the proxy for JWT.
 
 ## MCP over HTTP
 

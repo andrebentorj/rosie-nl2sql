@@ -62,6 +62,12 @@ a code and is compared as text.
 Thirty to fifty questions that your teams really ask are worth more than five hundred
 invented ones. Start with the questions of the pilot.
 
+This command does not read `eval/questions/`, the first bank `npm run init` writes. That
+bank belongs to another tool, the regression harness behind `docs/BENCHMARK.md`
+(`node -r dotenv/config test/eval/run.js`, scored by weighted criteria and not shipped in
+the production image). Questions from it that you want measured here go into
+`eval/bank.json` with a reference statement.
+
 ## Running it
 
 ```bash
@@ -83,13 +89,16 @@ docker run --rm --env-file rosie-env/.env \
 ```
 
 Each question is asked the way a user asks it, so it costs what a user's question costs. The
-run ends with the tokens used.
+run ends with the tokens used. The layout of the report, with made-up figures:
 
 ```
 Evaluation of sales, 2026-11-12 00:18 UTC, model gpt-6-luna
 
   Questions asked        42
   Matched the reference  37 of 42  (88.1%)
+    already in the context 15 of 15  (100%)   shows what was taught still works
+    held out               22 of 27  (81.5%)   the figure for a question it meets for the first time
+  Could be scored        42 of 42  (100%)
   Returned other rows    4
   Returned no result     1
 

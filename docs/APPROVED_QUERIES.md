@@ -30,7 +30,7 @@ who approved it:
 
 | Field | Required | Meaning |
 |---|---|---|
-| `id` | yes | Lower-case letters, digits, `-` or `_`. Unique in the file |
+| `id` | yes | 2 to 64 characters: lower-case letters, digits, `-` or `_`, starting with a letter or a digit. Unique in the file |
 | `question`, `sql` | yes | As for any verified query |
 | `approvedBy` | yes | Who reviewed it. Shown on the answer |
 | `approvedOn` | no | Date of the review, `YYYY-MM-DD`. Shown on the answer |
@@ -89,8 +89,9 @@ At startup each entry is checked, and one that fails is used as a plain example 
 - It does not match questions by itself: the model decides whether a question is the one an
   approved query answers. A wrong choice is possible, and the answer shows which approved
   question was used so a reader can tell.
-- There is no review screen yet: the queue below is a command, entries are edited in the
-  file, and the context is loaded at startup.
+- Parameters are not added for you. The review queue, as a command (below) or in the
+  administration console ([OPERATIONS.md](OPERATIONS.md)), approves a statement as it ran;
+  `params` are written by hand in the file.
 
 ## From a wrong answer to an approved query
 
@@ -106,7 +107,9 @@ write it), check the result, then approve **that** answer by its message id. `--
 validates the statement against the catalog and appends it to `verified-queries.json` with
 your name and today's date. Add `params` by hand where values should vary, then reload the
 context. No restart is needed: `docker kill --signal=HUP <container>`, or the reload
-endpoint ([OPERATIONS.md](OPERATIONS.md)).
+endpoint ([OPERATIONS.md](OPERATIONS.md)). The same approval can be made from the
+administration console, with `ROSIE_ADMIN_WRITE=true`: "Approve as a query" in its review
+view writes the entry and reloads the context by itself.
 
 ## When the database changes under an approved query
 
@@ -115,4 +118,5 @@ startup, every hour and after each reload. An approved query that reads a table 
 that is no longer there is **suspended**: the model is not shown it and cannot run it by id,
 so no answer carries a reviewer's name for a statement that stopped matching the database.
 The suspension is logged, counted in `/metrics`, and lifts by itself once the query no
-longer reads anything missing. See [OPERATIONS.md](OPERATIONS.md#schema-drift).
+longer reads anything missing. The comparison runs in the HTTP server only: an MCP process
+does not suspend anything. See [OPERATIONS.md](OPERATIONS.md#schema-drift).

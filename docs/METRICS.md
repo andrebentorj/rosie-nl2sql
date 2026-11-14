@@ -29,7 +29,7 @@ or a structured definition:
 | `expression` | Required. The SQL that computes the metric. Must contain at least one aggregate. |
 | `table` | The table the metric is computed on. |
 | `filters` | Conditions that must always apply. Each is one predicate. |
-| `dimensions` | Columns it makes sense to break the metric down by. Shown to the model; not enforced. |
+| `dimensions` | Columns it makes sense to break the metric down by. Shown to the model. Enforced where the engine writes the query (`query_metric`, below): a metric that declares dimensions can be broken down by those only. Not enforced on SQL the model writes itself. |
 | `synonyms` | Other names people use. Matched as whole words, like the name itself. |
 | `description` | Shown to the model after the definition. |
 

@@ -84,10 +84,11 @@ is governed and audited like the others. It is not listed, and a call to it is a
 tool, unless the installation turned it on. Leave it off when the agents that connect may
 have read untrusted text: a planted instruction could then choose the statement.
 
-The rest of the low-level surface (Profile B) is designed but not built: it is meant to be granted per
-person with a recorded justification, and there is no per-user identity to grant it against
-until the OAuth work lands. Building it now would hand those tools to everyone holding the
-shared token.
+The rest of the low-level surface (Profile B) is designed but not built. It is meant to be
+granted per person with a recorded justification, behind a scope of its own. The HTTP
+transport now has a verified identity per caller (JWT, below), but that scope and that
+record do not exist yet, and over stdio or with the static token there is no per-user
+identity at all: those tools would go to everyone holding the credential.
 
 `masked-columns.json` is never exposed, as a tool or a resource. It is the PII map.
 
@@ -98,9 +99,23 @@ shared token.
   Certificate** as a typed object (`verdict` enum `CONTRADICTED | FLAGGED | CROSS_CHECKED |
   NOT_CHECKED | CHECKS_PASSED | NOT_APPLICABLE`, `assertions[]` with `id`/`verdict`/`detail`,
   `skipped[]` with the checks that could not run; see `docs/CERTIFICATE.md`) and a `status` field:
-  `answered`, `clarification` (put `options` to the user and ask again) or `blocked`
-  (a governance rule refused the question; `reason` says which class, never the rule).
+  `answered`, `clarification` (put `options` to the user and ask again), `blocked`
+  (a governance rule refused the question; `reason` says which class, never the rule) or
+  `unfinished` (below). For
+  `query_metric`, `run_approved_query` and `certify_sql`, a request that names something
+  that does not exist or is not allowed comes back as `blocked` with the reason
+  `request_refused`, as an `isError` result whose text says what was wrong.
   SDK clients validate the result against the schema automatically.
+- **Unfinished answers (since 1.24.0).** `status` has a fourth value, `unfinished`: the
+  request ended with no query run as the answer. `reason` names the limit that stopped the
+  model (`query_budget`, `tool_calls`, `token_budget` or `loop_limit`), or is `query_failed`
+  when the statement meant as the answer was refused or failed. `sql` and `certificate` are
+  `null` and `rows` and `columns` are empty. It is not "no data": the agent should narrow the question and ask again.
+  Over HTTP the same outcome is the `unfinished` object of `/ask` (`docs/API.md`).
+- **The question review (since 1.24.0).** With `AI_QUESTION_REVIEW=true` an `answered`
+  result carries `questionReview` (`verdict`, `reading`, `model`, `outcome`, and `firstSql`
+  when the answer was replaced): the opinion of a model on whether the statement answers
+  the question, apart from the certificate. It is `null` otherwise.
 - **Instructions.** The server publishes standing guidance that clients inject into the
   agent's context: ask in plain language, call `list_available_data` first when unsure,
   how to treat each verdict (CONTRADICTED is "this total is inflated, do not present it as a fact"; nothing is ever "verified"), no memory between
@@ -139,8 +154,8 @@ point loads it by absolute path, so no secret has to be copied into the client c
 absolute paths for both `node` and the script (`which node` if the client cannot find it),
 and restart the client after editing.
 
-To point one client at a DIFFERENT project than `.env` names, override just that variable —
-anything already in the environment wins over the file:
+To point one client at a DIFFERENT project than `.env` names, override just that variable.
+Anything already in the environment wins over the file:
 
 ```json
 {
@@ -174,8 +189,23 @@ while no audit sink can record them.
 (default 15 min) in this process too, because a desktop client keeps it alive for days and a
 one-shot check would make a later `GRANT` invisible until restart.
 
-**Quotas and concurrency.** `ask_data`, `explain_answer`, `export_answer`, `query_metric` and
-`run_approved_query` pass through the
+**The audit file needs an absolute path.** Unset, `ROSIE_AUDIT_FILE` is `logs/rosie-audit.ndjson`
+under the working directory of the process, and an MCP client starts the server from a
+directory of its own choosing. Set `ROSIE_AUDIT_FILE` to an absolute path in `.env` so the
+file lands where you expect and can be written.
+
+**No reload, no drift check, no metrics route.** These three belong to the HTTP server
+(`npm start`). An MCP process reads the context once, when it starts: restart it (for stdio,
+restart the client) after an edit, and do not send `HUP` to `npm run mcp:http`, which ends
+it. It does not compare the catalog with the database, so approved queries are not
+suspended on schema drift here (`docs/OPERATIONS.md`). Its questions are audited like any
+other, in the engine tables and the audit file, but its counters live in its own process,
+which serves no `/metrics`: a Prometheus scrape of the HTTP server does not include what
+was asked through MCP. Read MCP usage from the audit table (`npm run weekly-report`,
+`npm run audit-report`).
+
+**Quotas and concurrency.** `ask_data`, `explain_answer`, `export_answer`, `query_metric`,
+`run_approved_query` and `certify_sql` pass through the
 same hourly/daily quotas and in-flight cap as the HTTP route (`AI_MAX_QUERIES_PER_HOUR`,
 `AI_MAX_QUERIES_PER_DAY`, `AI_CONCURRENCY_LIMIT`), keyed by the caller identity. A refused
 call is an `isError` result that says why in plain words. The listing tools and the
@@ -190,8 +220,7 @@ step; `ROSIE_MCP_USER` only labels the audit rows and owns the signed handles. H
 also bound to the **project id**, so two stdio entries that share `ROSIE_HANDLE_SECRET` but
 serve different projects refuse each other's handles. `explain_answer` and `export_answer`
 write audit rows like `/ask` does (`status` `explain` / `export`, plus `_rejected` /
-`_error` variants). Remote transport is a separate phase because it needs real OAuth
-identity before anything is exposed beyond localhost.
+`_error` variants). Identity over the network is the subject of "Remote transport" below.
 
 **Clarifications.** When a question is genuinely ambiguous, `ask_data` returns
 `status: "clarification"` with the question and its options (also rendered as text). The
@@ -207,6 +236,22 @@ from the SDK, with `expectedResource` = `ROSIE_MCP_HTTP_PUBLIC_URL`, so a token 
 another resource is refused. Identity for quotas, audit rows and handle
 ownership is the verified token's `clientId`, never a tool argument.
 
+To start it:
+
+```bash
+ROSIE_MCP_HTTP_ENABLED=true          # without it the command refuses to start
+# ROSIE_MCP_HTTP_HOST=127.0.0.1      # default
+# ROSIE_MCP_HTTP_PORT=3002           # default
+# ROSIE_MCP_HTTP_PUBLIC_URL=         # the URL clients use (what the proxy exposes), for audience binding
+# ROSIE_MCP_HTTP_TOKEN=...           # static mode only, 24 characters or more
+npm run mcp:http
+```
+
+Clients send `POST /mcp` with `Authorization: Bearer <token>`. `GET /mcp` and `DELETE /mcp`
+answer 405, because there are no sessions. `GET /health` on the same port is public and
+answers `{ "status": "ok" }`, or `"security_hold"` while the read-only user has more than
+SELECT. It is a separate process from `npm start`, with its own port.
+
 There are two verifiers:
 
 - **JWT (production).** With `ROSIE_JWT_ISSUER` configured (see `docs/IDENTITY.md`), tokens are
@@ -218,7 +263,8 @@ There are two verifiers:
 - **Static token (preview).** Without JWT configuration, `ROSIE_MCP_HTTP_TOKEN` stands in for
   an identity provider: one identity, no claims. Keep it to local trials.
 
-In both modes the server binds `127.0.0.1` and belongs behind a TLS proxy. The JWT path is
+In both modes the server binds `127.0.0.1` unless `ROSIE_MCP_HTTP_HOST` says otherwise, and
+belongs behind a TLS proxy. The JWT path is
 covered by the identity unit tests and was exercised by hand against the running transport;
 it does not yet have an automated end-to-end test of its own.
 
@@ -228,7 +274,7 @@ stdio and HTTP cannot drift apart in handlers, instructions or capabilities.
 ## Testing
 
 ```bash
-npm run test:mcp            # protocol, tool surface, gating and handle ownership — free, no LLM
+npm run test:mcp            # protocol, tool surface, gating and handle ownership (needs the database, no LLM)
 node test/mcp/run.js --live # adds ask → explain → export against the real DB and model
 ```
 
@@ -236,14 +282,14 @@ The suite pins the handle-signing secret on both sides and passes the environmen
 the spawned server. That detail is load-bearing: the SDK's stdio transport forwards only a
 short allowlist of variables, so with different secrets every handle would be rejected for a
 bad signature and the ownership assertions would pass without proving anything. Ownership is
-therefore established in two steps — a handle minted for the server's identity must verify,
+therefore established in two steps: a handle minted for the server's identity must verify,
 and only then is the same handle, minted for someone else, shown to be refused.
 
 The suite drives the real server with the real SDK client over stdio, so a wire-format or
 handshake regression fails there rather than in someone's editor. It also asserts the two
 disclosure rules above: no low-level tool in `tools/list`, and no masked-column map or raw
 DDL in `list_available_data` or `rosie://catalog`. Since 2026-11 it further checks the
-`outputSchema`/`status` contract, the instructions, both resources, the prompt, argument
+`outputSchema`/`status` contract, the instructions, the resources, the prompt, argument
 validation, a `blocked` outcome (write intent, refused before any model call), handles bound
 to another project, the quota governor (a second server is spawned with an hourly quota
 of 1 and must refuse the second governed call), and the Streamable HTTP preview (a third

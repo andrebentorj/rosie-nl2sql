@@ -13,14 +13,45 @@ DB_PORT=5432
 DB_DATABASE=sales            # the database that holds the business data
 DB_SCHEMA=public             # the ONE schema Rosie reads (default: public)
 DB_SSL=true                  # true (verify the certificate), no-verify, or unset
-DB_ENGINE_DATABASE=rosie     # database for Rosie's own tables (audit, feedback, certificates)
+DB_ENGINE_DATABASE=rosie     # database for Rosie's own four tables (audit, certificates, feedback, rate limits)
 DB_ENGINE_SCHEMA=public      # schema for those tables inside it (default: public)
 DB_RO_USER=rosie_readonly
 DB_RO_PASSWORD=...
 ```
 
-Create the engine tables from `db/schema.postgres.sql` (or let `npm run init` do it), and
-generate the catalog as usual: `DB_DIALECT=postgres npm run generate-catalog`.
+Create the engine tables from `db/schema.postgres.sql` (or let `npm run init` do it with
+`--create-engine-tables`), and generate the catalog as usual:
+`DB_DIALECT=postgres npm run generate-catalog`. The steps are those of `docs/INSTALL.md`;
+this page gives the PostgreSQL statements.
+
+## The engine database and the main role
+
+```sql
+CREATE DATABASE rosie;
+CREATE ROLE rosie_app LOGIN PASSWORD '...';
+GRANT CONNECT ON DATABASE rosie TO rosie_app;
+```
+
+```bash
+psql -d rosie -f db/schema.postgres.sql
+```
+
+Then, connected to `rosie`:
+
+```sql
+GRANT USAGE ON SCHEMA public TO rosie_app;
+-- Always: the engine inserts its records and reads them back.
+GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA public TO rosie_app;
+GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO rosie_app;     -- the id columns are BIGSERIAL
+-- Only with ROSIE_RATE_LIMIT_STORE=database.
+GRANT UPDATE, DELETE ON rosie_rate_limit TO rosie_app;
+-- Only for the account that runs `npm run retention -- --confirm` (it can be another role).
+GRANT SELECT, DELETE ON rosie_audit_log, rosie_answer_certificate, rosie_feedback TO rosie_retention;
+```
+
+`npm run doctor` checks that the tables are there, not these grants. `npm run
+generate-catalog` and `npm run init` read the business schema with `DB_USER`, so that role
+also needs to read it, or run those commands with another account.
 
 ## The read-only role
 
@@ -31,9 +62,13 @@ GRANT USAGE ON SCHEMA public TO rosie_readonly;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO rosie_readonly;
 ```
 
+`GRANT ... ON ALL TABLES` covers the tables that exist when it runs. A table created later
+is not readable by this role until you grant it.
+
 At startup, and every 15 minutes after, Rosie checks this role and refuses to answer
 (`securityHold`) if it finds any of:
 
+- the role is named `postgres`, `admin` or `root`, whatever it may do;
 - a role attribute beyond login (SUPERUSER, CREATEDB, CREATEROLE, REPLICATION, BYPASSRLS);
 - membership in `pg_read_server_files`, `pg_write_server_files`,
   `pg_execute_server_program` or `pg_write_all_data`;
@@ -89,4 +124,4 @@ column is masked.
 - Driver types: `BIGINT` and `COUNT(*)` arrive as numbers, `NUMERIC` as text (as `DECIMAL`
   does on MySQL), `DATE` as `YYYY-MM-DD`, `TIMESTAMP` without time zone is read as UTC.
 - A project prompt can write `{{SQL_DIALECT}}` where it names the engine; it is replaced by
-  `MySQL` or `PostgreSQL`, so one context directory can serve both.
+  `MySQL`, `PostgreSQL` or `SQL Server`, so one context directory can serve more than one.

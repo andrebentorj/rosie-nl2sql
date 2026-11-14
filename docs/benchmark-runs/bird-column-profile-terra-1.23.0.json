@@ -3,9 +3,12 @@
  "ranAt": "2026-11-13",
  "benchmark": "BIRD Mini-Dev, 2026 edition, PostgreSQL, 500 questions",
  "writer": "gpt-6.1-terra",
+ "model": "gpt-6.1-terra",
+ "profile": true,
+ "repairUndeclared": true,
  "configuration": "catalog introspected from the database, with the column profile (BIRD_PROFILE=true) and AI_CERTIFICATE_REPAIR_UNDECLARED=true; no column descriptions, no question review",
  "bar": "Fixed before the run: 434 or more, the profile helps this model too; 424 to 433, within what one pass varies; under 424, it gets in the way.",
- "comparedWith": "429 of 500, same model, engine 1.18.0, no profile (2026-11-12)",
+ "comparedWith": "429 of 500, same model, engine 1.10.0, no profile (2026-11-12)",
  "paired": {
   "rightHereWrongThere": 38,
   "wrongHereRightThere": 30

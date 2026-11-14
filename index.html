@@ -105,7 +105,7 @@ footer { border-top: 1px solid var(--line); padding: 28px 0 44px; color: var(--m
     </div>
     <div class="shots">
         <figure>
-            <img src="assets/widget-verified.png" width="450" height="680" alt="Rosie answering a revenue question, with the note: cross-checked, re-derived independently and got the same value">
+            <img src="assets/widget-verified.png" width="450" height="680" alt="Rosie answering a question about tracks sold, with the note: cross-checked, re-derived independently and got the same value">
             <figcaption>Re-derived by a second route. Same value.</figcaption>
         </figure>
         <figure>
@@ -130,20 +130,21 @@ footer { border-top: 1px solid var(--line); padding: 28px 0 44px; color: var(--m
         <div class="card">
             <div class="figure good">2,328.60</div>
             <p>The same total re-derived by Rosie over distinct invoices. The answer is marked
-            <code>CONTRADICTED</code> and both figures are shown.</p>
+            <code>CONTRADICTED</code> and both figures are shown. This statement was written to show
+            the verdict: in the published runs of our own suite no answer ended with it.</p>
         </div>
     </div>
 
     <div class="grid3">
-        <div class="card"><h3>Inflated totals</h3><p>Detects joins that repeat rows under a sum or a count, and recomputes the figure a second way.</p></div>
+        <div class="card"><h3>Inflated totals</h3><p>Detects joins that repeat rows under a sum or an average, and recomputes the figure a second way. For a count it shows both readings and takes no side.</p></div>
         <div class="card"><h3>Filters that match nothing</h3><p>"Sales in Oporto" returns zero because the data says "Porto". Rosie checks the value exists and says which ones do.</p></div>
         <div class="card"><h3>Periods the data does not cover</h3><p>"This year" when the last record is from June is half a year. The answer says so.</p></div>
         <div class="card"><h3>Filters that remove nothing</h3><p>A condition every row satisfies is usually not the condition that was meant.</p></div>
         <div class="card"><h3>Metrics the engine compiles</h3><p>Declare "revenue" once, or import it from dbt or Cube. For a declared metric Rosie writes the query itself, formula and joins, so a join cannot inflate it.</p></div>
         <div class="card"><h3>Queries a person approved</h3><p>A query someone reviewed for a recurring question is run unchanged when the question comes back, and the answer says who approved it.</p></div>
-        <div class="card"><h3>A second attempt, before you see it</h3><p>When a check names a defect, the evidence goes back to the model once. The corrected answer is used only if it checks out better.</p></div>
+        <div class="card"><h3>A second attempt, before you see it</h3><p>When a check names a defect, the evidence goes back to the model once. The second answer replaces the first only on evidence about the figure, such as the same filters and the total the checks had already computed over distinct records. A clean verdict alone is not enough.</p></div>
         <div class="card"><h3>Says what was not checked</h3><p>Every answer carries a verdict. When no check could cover it, the answer says "not checked" and why, instead of looking the same as one that passed.</p></div>
-        <div class="card"><h3>What it does not do</h3><p>The automatic checks cover the structure of a calculation, not whether a question was understood. A misread question passes every one of them; approved queries and declared metrics are the answer to that.</p></div>
+        <div class="card"><h3>What it does not do</h3><p>The automatic checks cover the structure of a calculation, not whether a question was understood. A misread question, or data read the wrong way, passes every one of them. A query a person approved covers the question it was approved for; for the rest, give the model a profile of the data and measure on your own questions.</p></div>
     </div>
 </section>
 
@@ -151,7 +152,7 @@ footer { border-top: 1px solid var(--line); padding: 28px 0 44px; color: var(--m
     <div class="kicker">Measured</div>
     <h2>Numbers you can reproduce.</h2>
     <p class="sub">Our own regression suite: 198 questions over a public sample database, the same
-    bank on each engine, one pass. "Passed" means the answer met the suite's weighted criteria, not
+    bank on each engine, the default model, version 1.17.0, one pass. "Passed" means the answer met the suite's weighted criteria, not
     exact-match accuracy. 35 of the questions are traps built from the error classes the
     certificate covers.</p>
     <div class="tablewrap">
@@ -162,15 +163,24 @@ footer { border-top: 1px solid var(--line); padding: 28px 0 44px; color: var(--m
             <tr><td>Requests that must be refused, refused</td><td>20 of 20</td><td>20 of 20</td><td>20 of 20</td></tr>
             <tr><td>Trap questions</td><td>35</td><td>35</td><td>35</td></tr>
             <tr><td>Trap answers that went out with no warning</td><td>0</td><td>0</td><td>0</td></tr>
+            <tr><td>Right answers flagged anyway (false alarms, traps left out)</td><td>6 of 94</td><td>5 of 92</td><td>7 of 92</td></tr>
+            <tr><td>Answers that failed the suite and carried a clean certificate</td><td>1</td><td>1</td><td>1</td></tr>
             <tr><td>Model cost of the whole run</td><td>US$ 0.14</td><td>US$ 0.15</td><td>US$ 0.15</td></tr>
         </tbody>
     </table>
     </div>
     <p class="note">We wrote that suite, so we also ran one we did not write. On BIRD Mini-Dev (2026
-    update: 500 public questions, 11 databases, no tuning) Rosie scores 54.4% execution accuracy,
-    against the 51.8% baseline the dataset lists for the same model. On that benchmark almost all
-    errors are sound calculations of something other than what was asked, which the certificate does not catch: it flagged 10 of 214 wrong
-    answers. Both results, the misses and the commands to rerun them are in the documentation.</p>
+    update: 500 public questions, 11 databases, context built from the schema alone) Rosie scored 54.4%
+    execution accuracy with the default model, in one pass. The dataset lists 51.8% for the same model
+    with a fixed prompt: the same range, not a lead. On that benchmark almost all errors are sound
+    calculations of something other than what was asked, which the certificate does not catch: it
+    flagged 10 of 214 wrong answers.</p>
+    <p class="note">With a profile of each column read from the data, together with a question back to
+    the model when a total has two readings, the same model scored 65.8% in one pass, on the benchmark
+    those two changes were developed on, and they were not measured apart. Accuracy follows the model
+    first: a stronger model scored 85.8% without them and 87.4% with them, one pass each, a difference
+    that chance gives four times in ten. Every result, the misses and the commands to rerun them are in
+    the documentation.</p>
 </section>
 
 <section>
@@ -189,9 +199,11 @@ footer { border-top: 1px solid var(--line); padding: 28px 0 44px; color: var(--m
             <h2>One command reads your schema.</h2>
             <p class="sub">The setup wizard builds everything Rosie needs from your database: the catalog,
             the masked columns, the instructions, example queries validated against your data and a
-            first question bank. About a minute and a half on the sample database.</p>
+            first question bank. A model writes the descriptions and the examples, so review what it
+            wrote before going live.</p>
 <pre>npm run init -- --url postgres://user:pw@host/db \
-     --name "My Project" --create-ro-user
+     --name "My Project" --create-ro-user \
+     --create-engine-tables
 npm run doctor
 npm start</pre>
         </div>
@@ -227,7 +239,8 @@ npm start</pre>
 </section>
 
 <footer>
-    Rosie. Self-hosted text-to-SQL for MySQL, MariaDB, PostgreSQL and SQL Server.
+    Rosie. Self-hosted text-to-SQL for MySQL, PostgreSQL and SQL Server. MariaDB uses the MySQL
+    dialect and is not part of the test matrix.
 </footer>
 
 </div>

@@ -23,7 +23,8 @@ the caller's identity goes.
 }
 ```
 
-A predicate may combine comparisons with `AND`, `OR`, `IN`, `IS NULL` and literals. It may
+Keys that start with `_` or `$` (`_comment`, `$schema`) are ignored. A predicate may combine
+comparisons with `AND`, `OR`, `IN`, `IS NULL` and literals. It may
 not call functions, contain a subquery or name a column of another table. A policy that
 breaks these rules, names a table or column that is not in the catalog, or uses no claim at
 all stops the server at startup.
@@ -61,8 +62,8 @@ Nothing runs, and the model is told not to retry, when:
 - the request has no verified identity, or the identity lacks a claim the policy needs;
 - a claim is empty, or a list claim is an empty list;
 - a claim value falls outside a narrow alphabet (letters, digits, space and `_ . @ : + -`, at
-  most 128 characters, no `--`). Tenant ids, UUIDs, slugs and e-mail addresses pass; quotes,
-  backslashes, semicolons and control characters do not;
+  most 128 characters, starting with a letter or a digit, no `--`). Tenant ids, UUIDs, slugs
+  and e-mail addresses pass; quotes, backslashes, semicolons and control characters do not;
 - a CTE takes the name of a restricted table;
 - the statement cannot be parsed for rewriting.
 
@@ -80,8 +81,9 @@ Numbers are written as numbers and booleans as booleans. A list is accepted only
 
 ## Proof
 
-`npm run test:security` includes 45 attempts to read another tenant's rows, run on both SQL
-dialects, plus the identity-value and startup checks (section 23 of the battery).
+`npm run test:security` includes attempts to read another tenant's rows, run on MySQL and
+PostgreSQL, plus the identity-value and startup checks (section 23 of the battery), and a
+separate group that checks the rewritten statement on SQL Server.
 `npm run test:postgres` and `npm run test:mysql` run two tenants against a real database and
 check that the same question returns different numbers and a certificate derived from each
 tenant's rows. The PostgreSQL suite also drives the HTTP API with signed tokens: the claim in

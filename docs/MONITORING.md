@@ -36,16 +36,16 @@ does describe how the service is used.
 
 | Metric | Labels | Meaning |
 |---|---|---|
-| `rosie_questions_total` | `status` | Questions received. `success`, `error`, `no_query`, `clarification`, `blocked`, `aborted` |
+| `rosie_questions_total` | `status` | One per audit record. For a question: `success`, `error`, `no_query`, `clarification`, `blocked`, `aborted`. Exports and explanations write audit records too, and theirs are counted here as `other` |
 | `rosie_blocked_total` | `reason` | Questions refused before any model call: `sensitive_info_requested`, `masked_column_requested`, `write_operation_requested`, `prompt_injection_detected` |
-| `rosie_answers_total` | `source` | Answers that returned a result, by where the statement came from: `model_sql`, `approved_query`, `compiled_metric` |
+| `rosie_answers_total` | `source` | Answers that returned a result, by where the statement came from: `model_sql`, `approved_query`, `compiled_metric`, `certified_sql` (a statement sent to `/certify` or `certify_sql`) |
 | `rosie_certificates_total` | `verdict` | Certificates issued, by verdict ([CERTIFICATE.md](CERTIFICATE.md)) |
 | `rosie_assertions_total` | `check`, `result` | Each check that ran, with `pass`, `warn` or `fail` |
 | `rosie_checks_skipped_total` | `check`, `reason` | Each check that was due and did not run, and why |
 | `rosie_repairs_total` | `outcome` | Certificate-guided second attempts |
 | `rosie_feedback_total` | `rating` | Ratings from users, `up` or `down` |
 | `rosie_tokens_total` | `direction` | Model tokens, `input` and `output` |
-| `rosie_question_duration_seconds` | histogram | Time to answer, end to end. Buckets at 1, 2, 5, 10, 20, 30, 60 and 120 seconds |
+| `rosie_question_duration_seconds` | histogram | Time to answer, end to end. Buckets at 1, 2, 5, 10, 20, 30, 60 and 120 seconds. Exports and explanations are observed here too |
 | `rosie_audit_sink_healthy` | gauge | 1 while the audit trail is being recorded, 0 otherwise |
 | `rosie_security_hold` | gauge | 1 while answers are refused because the read-only user has more than SELECT |
 | `rosie_uptime_seconds` | gauge | Seconds since the process started |
@@ -57,9 +57,13 @@ does describe how the service is used.
 | `rosie_approved_queries_suspended` | gauge | Approved queries and examples suspended because they read one of those |
 | `rosie_evaluation_*` | gauges | Accuracy, outcomes, wrong answers by warning, regressions and time of the last `npm run evaluate`. Present once one has run ([EVALUATION.md](EVALUATION.md)) |
 
-Every transport is counted the same way. A question asked through the MCP server and one
-asked through the widget both pass the same audit point, and that is where the counters
-are fed.
+The counters are fed at the audit point, which every transport passes. But they live in the
+memory of the process that answered, and only the HTTP server (`npm start`) serves
+`/metrics`. A question asked through an MCP process (`npm run mcp`, `npm run mcp:http`) is
+counted in that process, which has no metrics route, so it does not appear in a scrape. Its
+audit rows are in the same engine tables: read MCP usage from there
+(`npm run weekly-report`, `npm run audit-report`). The schema-drift gauges are also those of
+the HTTP server; MCP processes do not run that check.
 
 ## What never becomes a label
 
@@ -83,7 +87,7 @@ groups:
       - alert: RosieErrorRate
         expr: |
           sum(rate(rosie_questions_total{status="error"}[15m]))
-            / sum(rate(rosie_questions_total[15m])) > 0.1
+            / sum(rate(rosie_questions_total{status!="other"}[15m])) > 0.1
         for: 15m
       - alert: RosieSlowAnswers
         expr: |

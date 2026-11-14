@@ -110,7 +110,13 @@ Put the replicas behind a load balancer and set two things on all of them:
   installation instead of one per replica. The count is kept in the engine database, in the
   table `rosie_rate_limit` that the schema file creates (`db/schema.sql` and its PostgreSQL and
   SQL Server versions; running the file again after an upgrade only creates what is missing).
-  `npm run doctor` says whether the table is there.
+  The account of the main pool needs UPDATE and DELETE on that table, on top of the SELECT
+  and INSERT it has on the engine database: the counters are incremented and old windows
+  removed. On MySQL: `GRANT UPDATE, DELETE ON rosie.rosie_rate_limit TO 'rosie_app'@'%';`
+  (`docs/INSTALL.md`, Step 3; `docs/POSTGRES.md` and `docs/SQLSERVER.md` for the other
+  engines). `npm run doctor` says whether the table is there. It does not try to write to
+  it: without the grant, doctor passes and each process logs `rate_limit_store_unavailable`
+  and counts on its own.
 
 How the shared quota behaves:
 
@@ -129,6 +135,22 @@ How the shared quota behaves:
 The concurrency limit stays per process on purpose: it protects the process, and capacity is
 meant to grow with replicas. The MCP transport follows the same setting: its quotas per
 caller are shared too, under their own counters, so the two front doors still count apart.
+
+What else is per process, with more than one:
+
+- **The context.** Each replica holds its own copy and needs its own reload; compare
+  `rosie_context_info` across them (`docs/OPERATIONS.md`).
+- **The counters of `/metrics`.** Scrape each replica (`docs/MONITORING.md`).
+- **The audit file.** Each process writes the file at its own `ROSIE_AUDIT_FILE`. The
+  database tables are shared; the file is the local copy of what that replica answered.
+- **The "looked at" list of the console.** It is `review-dismissed.json`, kept beside the
+  audit file of the replica that received the click. Replicas that do not share that
+  directory show different review queues.
+- **Explanations.** The text of an explanation is remembered in the process that produced
+  it. The same request landing on another replica costs one more model call and nothing
+  else.
+- **`TRUST_PROXY`.** Count the load balancer among the hops, or every user shares one
+  client address and one quota (`docs/INSTALL.md`, Step 6d).
 
 People do not ask continuously. A person reading an answer and typing the next question
 sends one every minute or two at most, so a process that carries 5 answers per second serves

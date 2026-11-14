@@ -13,20 +13,55 @@ DB_PORT=1433
 DB_DATABASE=Sales            # the database that holds the business data
 DB_SCHEMA=dbo                # the ONE schema Rosie reads (default: dbo)
 DB_SSL=true                  # true (encrypt and verify the certificate), no-verify, or unset
-DB_ENGINE_DATABASE=rosie     # database for Rosie's own tables (audit, feedback, certificates)
+DB_ENGINE_DATABASE=rosie     # database for Rosie's own four tables (audit, certificates, feedback, rate limits)
 DB_RO_USER=rosie_readonly
 DB_RO_PASSWORD=...
 ```
 
-The quickest route is the wizard, which creates the login, the engine tables and the whole
-context directory:
+The quickest route is the wizard. It always writes the context directory and the `.env`;
+it creates the read-only login only with `--create-ro-user` and the engine tables only with
+`--create-engine-tables`:
 
 ```bash
-npm run init -- --url 'mssql://user:password@host:1433/Sales' --name "My Project"
+npm run init -- --url 'mssql://user:password@host:1433/Sales' --name "My Project" \
+                --create-ro-user --create-engine-tables --engine-db rosie
 ```
 
 By hand: create the engine tables from `db/schema.mssql.sql` and generate the catalog with
-`DB_DIALECT=mssql npm run generate-catalog`.
+`DB_DIALECT=mssql npm run generate-catalog`. The steps are those of `docs/INSTALL.md`; this
+page gives the SQL Server statements. `DB_ENGINE_SCHEMA` is not read on SQL Server: the
+engine addresses its tables without a schema name, so they are found in the default schema
+of the main account.
+
+## The engine database and the main login
+
+```sql
+CREATE LOGIN rosie_app WITH PASSWORD = '...';
+CREATE DATABASE rosie;
+GO
+USE rosie;
+CREATE USER rosie_app FOR LOGIN rosie_app;
+```
+
+```bash
+sqlcmd -S <host> -U <admin> -d rosie -i db/schema.mssql.sql
+```
+
+```sql
+USE rosie;
+-- Always: the engine inserts its records and reads them back.
+GRANT SELECT, INSERT ON SCHEMA::dbo TO rosie_app;
+-- Only with ROSIE_RATE_LIMIT_STORE=database.
+GRANT UPDATE, DELETE ON OBJECT::dbo.rosie_rate_limit TO rosie_app;
+-- Only for the account that runs `npm run retention -- --confirm` (it can be another login).
+GRANT SELECT, DELETE ON OBJECT::dbo.rosie_audit_log TO rosie_retention;
+GRANT SELECT, DELETE ON OBJECT::dbo.rosie_answer_certificate TO rosie_retention;
+GRANT SELECT, DELETE ON OBJECT::dbo.rosie_feedback TO rosie_retention;
+```
+
+`npm run doctor` checks that the tables are there, not these grants. `npm run
+generate-catalog` and `npm run init` read the business database with `DB_USER`, so that
+login also needs to read its metadata there, or run those commands with another account.
 
 ## The read-only login
 
@@ -40,7 +75,7 @@ GRANT SELECT ON SCHEMA::dbo TO rosie_readonly;
 At startup, and every 15 minutes after, Rosie checks this login and refuses to answer
 (`securityHold`) if it finds any of:
 
-- the `sysadmin` server role, or the `sa` login itself;
+- the `sysadmin` server role, or a login named `sa`, `admin` or `root`;
 - membership in `db_owner`, `db_datawriter` or `db_ddladmin`;
 - a database permission beyond connecting and reading (CREATE TABLE, ALTER, CONTROL, ...);
 - INSERT, UPDATE, DELETE or ALTER on any table, counting permissions inherited through

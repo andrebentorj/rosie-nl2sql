@@ -1,8 +1,11 @@
 # Operations
 
 What changes after the first install: the context is edited, the database schema moves, and
-somebody has to know when either one breaks an answer. This page covers the two mechanisms
-for that. Counters and alerts are in [MONITORING.md](MONITORING.md).
+somebody has to know when either one breaks an answer. This page covers the mechanisms for
+that: checking a context change, reloading it, the weekly report, the administration
+console and schema drift. It ends with how to rotate a secret and a reference of the
+settings. Counters and alerts are in [MONITORING.md](MONITORING.md). Upgrading to a new
+version is in [INSTALL.md](INSTALL.md), "Upgrading".
 
 ## Check a context change before it is merged
 
@@ -74,9 +77,12 @@ jobs:
 ```
 
 This job needs no secret of the database and no model key. Where the pipeline can reach a
-database, run `npm run doctor -- --offline` after it (catalog against the live schema) and,
-with a model key, `npm run evaluate -- --min <n>` (answers against the evaluation bank,
-`docs/EVALUATION.md`). The three commands share the exit-code rule, so each can gate a merge.
+database, run `npm run doctor -- --offline` after it: doctor checks the whole installation,
+the catalog against the live schema included, and `--offline` skips its one call to the
+model. With a model key, run `npm run evaluate -- --min <n>` (answers against the evaluation
+bank, `eval/bank.json`, `docs/EVALUATION.md`). All three exit with 0 when nothing failed and
+with a non-zero code otherwise, so each can gate a merge. Only `check-context` uses 2 for
+"could not start"; `doctor` and `evaluate` exit with 1 in that case too.
 
 ## Reload the context without a restart
 
@@ -139,8 +145,13 @@ agree, compare `version`: it is a digest of the context files, and it is also ex
 `rosie_context_info` metric. A replica reporting a different value was not reloaded, or does
 not mount the same directory.
 
-The MCP server over stdio is one process per client. It reads the context when the client
-starts it, so restart the client to pick up an edit.
+Both ways reach the HTTP server (`npm start`) only. The MCP entry points read the context
+once, when they start, and have neither the signal handler nor the endpoint:
+
+- The MCP server over stdio is one process per client. Restart the client to pick up an
+  edit.
+- The MCP server over HTTP (`npm run mcp:http`) must be restarted. Do not send it `HUP`:
+  with no handler installed, that signal ends the process.
 
 ### The usual sequence
 
@@ -284,6 +295,12 @@ reload. The comparison runs as the read-only user, so it answers the question th
 can Rosie still read what the catalog names? A table that user lost access to counts as
 missing.
 
+The comparison is scheduled by the HTTP server (`npm start`). The MCP entry points
+(`npm run mcp`, `npm run mcp:http`) do not run it: in those processes nothing is suspended,
+and an approved query that reads a missing column fails with a database error when it is
+run. Where Rosie is used only through MCP, run `npm run doctor` on a schedule; it makes the
+same comparison and names what is missing.
+
 When something is missing:
 
 1. **One warning in the log**, naming the tables and columns. It is logged when the
@@ -303,9 +320,19 @@ allowlist, and leaving something out is how it stays out of reach.
 
 ```bash
 npm run doctor                # names every missing table and column
-npm run generate-catalog      # rewrites the catalog from the database, keeping your
-                              # descriptions, synonyms, metrics and masked columns
+npm run generate-catalog      # rewrites the catalog from the database, keeping what you
+                              # wrote by hand (the list is in INSTALL.md, Step 4c)
+npm run check-context -- --base <the previous copy of the context>
 ```
+
+`npm run generate-catalog` keeps descriptions, synonyms, enum values, metrics and masked
+columns, and since 1.24.0 also `measure`, `profile`, `profileNote`, `promptHidden`, a
+primary key written by hand and the relationships the database does not declare. It does
+**not** keep your choice of tables: it writes every table and view of the schema, including
+the ones you left out of the catalog on purpose, and the catalog is the allowlist. Remove
+them again before the reload. `check-context --base` lists every table and column the new
+file adds, so nothing comes back unnoticed. To fix one renamed column, editing its name in
+`schema-catalog.json` by hand is the smaller change.
 
 Then review the suspended approved queries in `verified-queries.json` (the statement, and
 `approvedBy` and `approvedOn` if a person looked at it again), and reload the context. The
@@ -330,3 +357,99 @@ missing.
   table. That errs on the side of suspending.
 - If the database cannot be reached, or returns no columns at all, the check reports "not
   checked" and suspends nothing. `rosie_schema_drift_checked` reads 0 in that case.
+
+## Rotating a secret
+
+Every secret is an environment variable, and `.env` is read once, when a process starts. A
+context reload does not reread it. So every rotation has the same shape: change the value
+where the process gets it, restart every process that uses it, change it on the other side.
+Only one value is valid at a time; there is no period in which the old and the new one are
+both accepted.
+
+**`ROSIE_API_TOKEN`** (the host application's credential):
+
+1. Generate a value: `openssl rand -hex 32`.
+2. Set it for every Rosie replica and restart them.
+3. Set it where the caller keeps it, normally the `Authorization` header your reverse proxy
+   adds (`docs/INSTALL.md`, Step 6d), and reload the proxy.
+
+Between steps 2 and 3 the proxy still sends the old value and every request answers 401.
+Do the two together, in a quiet moment. Answer handles are not affected: they are signed
+with `ROSIE_HANDLE_SECRET`.
+
+**`ROSIE_HANDLE_SECRET`** (signs answer handles):
+
+1. Generate a value of 16 characters or more. A shorter one is ignored with a warning and
+   the process signs with a random key of its own.
+2. Set the same value for every replica, and for the MCP processes that should accept the
+   same handles, and restart them.
+
+Every handle issued before the restart stops verifying. Handles live 15 minutes, so the
+cost is small: an export or an explanation of an older answer gets "That answer is no longer
+available" (404) and the user asks again; a follow-up question is answered without the
+previous answer as its starting point; a rating is still recorded, without the question and
+SQL snapshot. While replicas restart one by one, a handle from a replica on the old value
+is refused by one on the new value.
+
+**`ROSIE_METRICS_TOKEN`, `ROSIE_ADMIN_TOKEN`, `ROSIE_MCP_HTTP_TOKEN`:** the same two steps.
+Set the new value, restart, then update the scraper, the people who use the console (the
+page keeps the token for the browser tab only and asks again), or the MCP client.
+
+**Database passwords and the model key:** change them at the database or the provider, set
+the new value, restart. Nothing else holds them.
+
+With JWT (`docs/IDENTITY.md`) there is no shared user credential to rotate: keys rotate at
+the identity provider, and Rosie fetches the new key set from `ROSIE_JWT_JWKS_URL` when a
+token arrives signed with a key it does not have. With `ROSIE_JWT_JWKS` (the key set inline)
+a key rotation is a new value and a restart.
+
+## Settings reference
+
+Every setting is described in `.env.example`. This table is the short form of the ones no
+other page explains. All are read at startup; changing one needs a restart.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `TRUST_PROXY` | unset | Number of reverse-proxy hops in front of Rosie (usually `1`), or a list of proxy addresses. Unset, the client address Rosie sees is the proxy's and every user shares one rate-limit bucket. `true` trusts any `X-Forwarded-For` and is logged as a warning |
+| `NODE_ENV` | unset | `production` makes authentication fail closed: with no `ROSIE_API_TOKEN` and no JWT configured, every request is refused with 503. The Docker image sets it |
+| `ROSIE_CORS_ORIGIN` | `http://localhost:4200` | Origins allowed to call the API from a browser, comma-separated. `*` is refused |
+| `LOG_LEVEL` | `info` | `error`, `warn`, `info` or `debug`. Full SQL text is logged only at `debug`; filter values can hold personal data, so keep production at `info` |
+| `LOG_FORMAT` | `pretty` | `json` writes one JSON object per line, for a log aggregator |
+| `ROSIE_EVAL_DIR` | `<context>/eval/runs` | Where `npm run evaluate` writes its runs and where the server reads the last one. Set it when the context is mounted read-only |
+| `ROSIE_PERMCHECK_INTERVAL_MS` | `900000` | How often the privileges of the read-only user are checked again. A value under one minute is replaced by the default |
+| `ROSIE_MCP_HTTP_ENABLED` | `false` | Must be `true` for `npm run mcp:http` to start ([MCP_SERVER.md](MCP_SERVER.md)) |
+| `ROSIE_MCP_HTTP_HOST`, `ROSIE_MCP_HTTP_PORT` | `127.0.0.1`, `3002` | Where the MCP HTTP transport listens |
+| `AI_MAX_TOKENS` | `2048` | Tokens the model may write per reply |
+| `AI_TEMPERATURE` | unset | Sampling temperature. Unset, the engine chooses by model family; set it only to override |
+| `AI_REASONING_EFFORT` | unset | Reasoning effort for models that have one. Unset, the engine chooses by model family. Run `npm run test:provider` after changing it |
+| `AI_API` | unset | `chat` or `responses`: forces the wire API for every model. Unset, the engine starts on chat completions and moves a model to the responses API by itself when the provider says its function tools need it |
+| `AI_MAX_TOOL_CALLS` | `20` | Turns the model may take inside one question before it must answer |
+| `AI_MAX_QUERIES_PER_REQUEST` | `5` | Queries that reach the database inside one question. Further attempts are refused and the model must answer with what it has |
+| `AI_MAX_TOTAL_TOKENS` | `0` | Model tokens one question may use before an answer is forced. `0` is no limit |
+| `AI_LLM_RESULT_MAX_ROWS` | `30` | Rows of each result shown to the model. The user always gets the full result. `0` sends the whole result |
+| `AI_QUERY_TIMEOUT_MS` | `10000` | Statement timeout on the read-only pool |
+| `AI_CIRCUIT_BREAKER_THRESHOLD`, `AI_CIRCUIT_BREAKER_COOLDOWN_MS` | `5`, `60000` | After that many provider failures in a row, questions are answered with "temporarily unable" for the cooldown, without calling the provider |
+| `AI_SCHEMA_MAX_TABLES` | `40` | Catalogs with more tables than this get a prompt with only the tables relevant to the question. `0` turns that off. The allowlist is never affected |
+| `AI_SCHEMA_TOPK` | `15` | The most tables that selection may pick for one question |
+| `AI_CATALOG_COLUMNS` | `true` | Column names, type family and enum codes of unmasked columns in the prompt |
+| `AI_CATALOG_DESCRIPTIONS` | `false` | With the above, each column's description too, cut at 100 characters |
+| `AI_CATALOG_PROFILE` | `true` | With the above, each column's `profileNote` too (`npm run profile-columns`). A catalog without notes is unaffected |
+| `AI_ANSWER_CHECKS` | `true` | The Answer Certificate. `false` turns every check off |
+| `AI_CROSS_CHECK` | `true` | The second derivation ([CERTIFICATE.md](CERTIFICATE.md)) |
+| `AI_CERTIFICATE_REPAIR` | `true` | One second attempt by the model when the checks name a structural defect |
+| `AI_CERTIFICATE_REPAIR_UNDECLARED` | `false` | The same second attempt where the context declares nothing about the column |
+| `AI_QUESTION_REVIEW` | `false` | A model reads the question against the final statement and returns an opinion (`questionReview`). One more model call per answer |
+| `AI_QUESTION_REVIEW_MODEL` | `AI_MODEL` | The model that reviews. A stronger one than `AI_MODEL` is the point |
+| `AI_QUESTION_REVIEW_REPAIR` | `true` | With the review on, one second attempt when the review says the statement does not answer the question |
+| `AI_UNION_ALL` | `true` | Accepts `UNION ALL` between the branches of a derived table or `WITH` body. Every other set operation is refused whatever this says |
+
+## Other commands
+
+Commands that no other page describes.
+
+| Command | What it does |
+|---|---|
+| `npm run generate-vault` | Writes an Obsidian vault from the context directory: one note per table, linked by the catalog's relationships, one per declared metric, and diagrams of the request flow. Output goes to `<context>/vault`, or `--out <dir>`; `--context <dir>` picks another context. It overwrites its own folders (`Schema/`, `Metrics/`, `Flows/` and the hub note) and leaves anything else in the vault alone. No database and no model. |
+| `npm run test:live` | Runs the four suites that need real servers, one after the other: `test:mcp`, `test:mysql`, `test:postgres`, `test:sqlserver`. |
+| `npm run audit:deps` | `npm audit --audit-level=high`: fails on a known high or critical vulnerability in a dependency. The CI runs it on every push. |
+| `node scripts/print-prompt-hash.js` | Prints the length and the SHA-256 of the assembled system prompt for the current context. Run it before and after a change that should not alter the prompt, and compare the two lines. |

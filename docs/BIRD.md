@@ -51,7 +51,7 @@ The answer still comes from the model, and the model is what this score mostly m
 By the difficulty label in the question file: simple 6 of 8, moderate 20 of 32, challenging
 246 of 460.
 
-Median time per question 7 seconds, 90th percentile 22 seconds, 3.7 tool calls per question,
+Median time per question 7 seconds, 90th percentile 21 seconds, 3.7 tool calls per question,
 9.0 million input tokens (91% served from the provider's cache) and 0.24 million output tokens for the whole run.
 
 ## What the Answer Certificate did here, and did not
@@ -66,8 +66,10 @@ the feature.
 | Answers marked `VERIFIED` (the name `CROSS_CHECKED` had until version 1.0.1) | 16 |
 | of which wrong by the benchmark's reference | 14 |
 
-On Rosie's own bank the certificate catches every trap; here it catches one wrong answer in
-twenty. Both numbers are true, and the difference is what kind of error is being made.
+On Rosie's own bank no trap answer went out wrong without a warning (the model avoided 21 of
+the 35 by itself and the certificate flagged the other 14, `docs/BENCHMARK.md`); here the
+certificate flags one wrong answer in twenty. Both numbers are true, and the difference is
+what kind of error is being made.
 
 The certificate detects **structural** errors: a join that repeats rows, a filter on a value
 that is not in the data, a period the data does not cover. The bank in `docs/BENCHMARK.md`
@@ -94,7 +96,8 @@ of the day. See `docs/CERTIFICATE.md`.
 
 So, what this benchmark says about Rosie:
 
-- as a text-to-SQL engine it performs like the model underneath it, slightly better;
+- as a text-to-SQL engine it performs like the model underneath it: 2.6 points over the
+  baseline in one pass is the same range, not a lead;
 - the certificate removes one class of silent error (the structural one) and does nothing
   for an answer that is sound and is not what was asked. Those need knowledge of the data
   and of the terms, which a context provides. None was used here, by design. What kind of
@@ -128,8 +131,14 @@ Where this differs from the official evaluation script, in the direction it coul
   comparison only, so long lists are compared whole.
 - **PostgreSQL 17**, restored from the official dump files into a stock `postgres:17`
   container. The official image was used only as the source of those files.
-- **One pass.** No run-to-run variance was measured, so differences of a point or two mean
-  nothing.
+- **One pass.** Run-to-run variation was measured later (see "How much the same model
+  changes from one run to the next"): two passes of the same model differ on 101 to 120 of
+  the 500 questions, so differences of a few points mean nothing.
+- **Dates.** The dates on this page are the local date of the machine that ran the
+  benchmark (UTC-3). The report files are named by UTC time, and the files of
+  `docs/BENCHMARK.md` carry UTC times, so a run that ended late in the evening has the next
+  day in its file name (the `gpt-6.1-terra` run with the profile, dated 2026-11-13 here,
+  ended at 02:02 UTC on 2026-11-14).
 
 The published 51.8% comes from the benchmark's own harness, with its own prompt and no
 tools. The comparison is between two ways of using the same model, not a controlled
@@ -153,8 +162,10 @@ certificate verdict.
 
 The same 500 questions with `gpt-6-luna` writing and `gpt-6.1-terra` reviewing each answer
 (`AI_QUESTION_REVIEW=true`, engine 1.20.0, 2026-11-13): **320 of 500 (64.0%)**, against 272
-for the writer alone. 43 wrong answers were turned right by the second attempt and 4 right
-ones were turned wrong. The reviewer's instructions were adjusted on answers to these same
+for the writer alone. One pass. 43 wrong answers were turned right by the second attempt and 4 right
+ones were turned wrong, so 39 of the 48 answers gained are the review's: the first statements
+of this same run score 281, and the other 9 are what two runs of the same model differ by.
+The reviewer's instructions were adjusted on answers to these same
 questions, and the same run on the archived 2025 questions gave no gain (296 of 500, 6
 answers fixed and 5 broken), on a set whose references are unreliable. It is a result on this set, not a figure
 to quote in general. The detail and the caveats are
@@ -184,7 +195,8 @@ Both columns are the runs with the question review on. What it says:
 - **Why they differ is mostly not a matter of reading the question.** An earlier version of
   this page said it was, and that declared metrics and approved queries were the remedy. An
   independent review of this run read 65 of the wrong answers on the 2026 questions one by
-  one and found another cause in about half of them: the model does not know **how the
+  one (its counts are from that reading by hand and are not reproducible from this
+  package) and found another cause in about half of them: the model does not know **how the
   database records a missing value**. A question says "heroes with a known weight", the
   model writes `weight_kg IS NOT NULL`, and the table holds 0 for "not recorded" (172 of
   its 750 rows, which we checked; 125 names are `-`). The next causes it found are the
@@ -197,7 +209,9 @@ Both columns are the runs with the question review on. What it says:
   result is the next section. Metrics and approved queries do not address this kind of error.
 - **The certificate already points at part of them and the engine does not act on it.** With
   `gpt-6-luna`, an answer carrying a fan-out or grain warning was wrong in 25 of 25, 12 of
-  13 and 7 of 7 cases in the three runs; with `gpt-6.1-terra`, in 1 of 7. The warning is
+  13 and 7 of 7 cases in the three runs; with `gpt-6.1-terra`, in 1 of 7. In the fourth
+  `gpt-6-luna` run, the one of the next section, with the two-figure question on, 9 of the 13
+  answers that still carried the warning were wrong and 4 were right. The warning is
   sent back to the model only for a column the context declares, and these contexts declare
   none. Since 1.23.0 it can be sent as a question without a declaration
   (`AI_CERTIFICATE_REPAIR_UNDECLARED`).
@@ -248,7 +262,7 @@ How to read it.
   48 to 57 answers over each of the three earlier runs, where those differ from each other
   by 9. Of the 145 questions wrong in all three, 57 are right here.
 - **It also lost answers.** Of the 187 questions right in all three earlier runs, 15 are
-  wrong here. We read the 15. Most are the ordinary variation of the model (another
+  wrong here. We read the 15 (a reading by hand, with no file kept). Most are the ordinary variation of the model (another
   filter, another column). One is caused by a note: a column where `-` is a test result
   ("negative") and the commonest value, which the note called a possible "not recorded",
   and the model left those rows out. The note for a placeholder that is the commonest value
@@ -257,13 +271,13 @@ How to read it.
 - **The parts were not measured apart.** The run did not record how often the second
   attempt replaced an answer, so how much of the gain is the profile and how much is the
   question about two figures is not known. On twelve questions tried beforehand the profile
-  alone turned eight.
+  alone turned eight (no result file is kept for that trial).
 - **It was developed on this benchmark.** The profile reads only the data, but which facts
   it reports, and at what thresholds, was decided after an analysis of wrong answers to
   these same questions. The earlier edition of the benchmark cannot confirm it (its
   references are unreliable and its data traps are few). A second benchmark with dirty data
   is what would, and there is none here yet.
-- **It is one pass.** A third of the questions change outcome between runs of this model.
+- **It is one pass.** Two runs of this model differ on 101 to 120 of the 500 questions.
 - **`gpt-6.1-terra` alone gets 429** without any of this; with it, 437 (next section).
 
 Every question is in `docs/benchmark-runs/bird-column-profile-1.23.0.json`. To repeat it:
@@ -278,9 +292,9 @@ Every question is in `docs/benchmark-runs/bird-column-profile-1.23.0.json`. To r
 | | Correct of 500 |
 |---|---|
 | With the profile | **437 (87.4%)** |
-| Without it (engine 1.18.0, 2026-11-12) | 429 (85.8%) |
+| Without it (engine 1.10.0, 2026-11-12) | 429 (85.8%) |
 
-It passed the bar, and the bar was too loose. Question by question, 38 are right here that
+It passed the bar, and the bar was too loose (see "How a gain is claimed here"). Question by question, 38 are right here that
 were wrong there and 30 the other way: 68 questions changed and the balance is 8, which a
 coin would give about four times in ten. What can be said is narrower.
 
@@ -298,6 +312,12 @@ coin would give about four times in ten. What can be said is narrower.
   With this model it is close to unused, so the difference here is the profile.
 - **The certificate on this run**: 22 answers marked `CROSS_CHECKED`, none of them wrong;
   10 of the 63 wrong answers flagged, 14 of the 437 right ones flagged.
+- **One answer counted right had no result in the engine.** On question 491 the last
+  statement the model sent did not run in the engine, so the response carried the statement
+  text with no rows and no certificate. The runner executes the statement text itself, and
+  it matched the reference. A user would have received no table for it. Since 1.24.0 such
+  a response carries no statement and says the query did not run (`unfinished`,
+  `query_failed`), and the runner counts it as no answer.
 
 Every question is in `docs/benchmark-runs/bird-column-profile-terra-1.23.0.json`.
 
@@ -331,7 +351,9 @@ identical in configuration, and the totals are 272, 281 and 272. Question by que
 | one of the three | 72 |
 | none | 145 |
 
-**A third of the questions (168) change outcome between runs.** Two things follow.
+**A third of the questions (168) change outcome across the three runs.** Between any two of
+them the count is 101, 115 or 120 (20% to 24%), and part of that is the difference in
+configuration, which these runs cannot separate from chance. Two things follow.
 
 - A difference of ten or fifteen answers between two single runs says nothing, in either
   direction. That applies to the figures on this page, ours included.
@@ -341,9 +363,68 @@ identical in configuration, and the totals are 272, 281 and 272. Question by que
   among several candidates by something other than their count might. Nothing in the engine
   does that today.
 
+## How a gain is claimed here
+
+Since 1.23.2. Two totals side by side are not a comparison: two runs of the same model
+differed on 101 to 120 of the 500 questions, and 168 changed outcome across three runs
+(runs that were not identical in configuration, so this is an upper bound on chance alone).
+The rule for every figure added to this page from now on:
+
+1. **Three passes of each configuration** (`test/bird/run.js --passes 3`), each kept as its
+   own report. The page gives the three totals, not the best one.
+2. **Compared question by question** (`npm run bird:compare -- --a <reports> --b <reports>`).
+   For each question the share of passes that got it right is taken on each side; the
+   questions where one side is ahead and where the other is are counted, and the exact sign
+   test is applied to the two counts.
+3. **A gain is claimed when p is under 0.05, and not otherwise.** A bar written before a run
+   is written in these terms ("ahead, p under 0.05"), not as a total to reach.
+4. **One thing changed at a time.** The tool reads what each report says about its
+   configuration and says so when two sides differ in more than one thing, or in none.
+
+The runs above, read this way, from the reports in `docs/benchmark-runs`. They are single
+passes, made before the rule, and the tool says so.
+
+| Comparison | Totals | Ahead / behind | p | Reading |
+|---|---|---|---|---|
+| `gpt-6-luna`, profile and two-figure question against two earlier runs | 329 against 272, 272 | 141 / 72 | 0.000003 | a gain |
+| `gpt-6.1-terra`, the same against one earlier run | 437 against 429 | 38 / 30 | 0.40 | not told apart |
+| `gpt-6-luna`, the engine against the model alone | 272 against 215 | 101 / 44 | 0.000003 | a gain |
+| `gpt-6.1-terra`, the engine against the model alone | 429 against 381 | 68 / 20 | 0.0000003 | a gain |
+
+The files, all in `docs/benchmark-runs`: `bird-model-alone-luna-1.23.2.json`,
+`bird-model-alone-terra-1.23.2.json`, `bird-engine-luna-1.0.0.json`,
+`bird-engine-luna-described-1.21.0.json`, `bird-engine-terra-1.10.0.json`,
+`bird-column-profile-1.23.0.json`, `bird-column-profile-terra-1.23.0.json`. The first row
+is `npm run bird:compare -- --a docs/benchmark-runs/bird-engine-luna-1.0.0.json,docs/benchmark-runs/bird-engine-luna-described-1.21.0.json --b docs/benchmark-runs/bird-column-profile-1.23.0.json`.
+
+The tool prints its cautions after the result, and three of them stand here: a side with
+one pass counts a question that changes between runs as fully right or fully wrong; the two
+earlier `gpt-6-luna` runs are not one configuration (one had the benchmark's column
+descriptions, which changed nothing in the total); and the two sides differ in two things at
+once (the profile and the two-figure question). The tool can only say the last when the
+reports carry their configuration, which the reports in `docs/benchmark-runs` do. The
+`gpt-6.1-terra` sides also differ in engine version (1.10.0 against 1.23.0).
+
+**Three figures per model** are what a reader needs to tell the model from the engine: the
+model alone in one call with the same catalog text (`BIRD_FIXED_PROMPT=true`, no tools, no
+second look, no certificate), the engine, and the engine with the profile of the data.
+
+| Model | Model alone, one call | Engine | Engine with the profile |
+|---|---|---|---|
+| `gpt-6-luna` | 215 (43.0%) | 272, 281, 272 | 329 |
+| `gpt-6.1-terra` | 381 (76.2%) | 429 | 437 |
+
+The first column is our own prompt, not the benchmark's baseline: engine 1.23.2, 2026-11-14,
+one pass. The 281 is the first statements of the run with the question review. Every figure
+in this table is a single pass and the columns were run on different engine versions.
+Question by question the engine is ahead of the model alone for both models (the last two
+rows of the table above), which a single pass a side is enough to say at these sizes; how
+large the distance is (57 answers for one model, 48 for the other) is what three passes
+would settle.
+
 ## Other models
 
-The run above uses the cheapest model on the list. The same 500 questions with a stronger
+The first run on this page (Result) uses the cheapest model on the list. The same 500 questions with a stronger
 one, 2026-11-12, model `gpt-6.1-terra`, version 1.10.0, PostgreSQL 17, one pass, cross-check
 enabled:
 
@@ -363,7 +444,7 @@ enabled:
 | Cost of the run at list price | about US$ 5.50, an upper bound that ignores the discount on cached input |
 
 Two things this run does not say. It is not a like-for-like comparison of the two models: the
-`gpt-6-luna` run above was made two days earlier with an older version of the engine, and the
+`gpt-6-luna` run of the Result section was made two days earlier with an older version of the engine, and the
 engine changed in between (among other things it now asks once for the execution of a
 statement the model only wrote out). And it confirms what the first run showed about the
 certificate: on this benchmark most wrong answers are sound calculations of something else,

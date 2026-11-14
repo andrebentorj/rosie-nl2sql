@@ -25,8 +25,19 @@ example queries) and measured by evaluation on your own questions, not caught he
 
 ## The six verdicts
 
-Every answer that ran SQL carries exactly one. There is no "no certificate": an answer where
-nothing could be checked says so.
+Every answer that comes with a result (a statement that ran and returned its rows) carries
+exactly one. An answer where nothing could be checked says so, and when the checks
+themselves stop on an error the certificate is still there, as `NOT_CHECKED` with the reason
+`checks_failed`. A response has no certificate in three cases:
+
+- the checks are turned off (`AI_ANSWER_CHECKS=false`, the kill switch; on by default);
+- the response is a clarifying question or a refusal, so there is no statement;
+- the last statement the model sent did not run (the validator refused it or the database
+  returned an error) and no earlier one stands as the answer. Since 1.24.0 the response
+  then carries no statement either, and says so (`unfinished`, reason `query_failed`).
+  Before that it carried the statement text with no rows and no certificate, which happened
+  once in a published run: question 491 of
+  `docs/benchmark-runs/bird-column-profile-terra-1.23.0.json`.
 
 | Verdict | Meaning | What a reader should do |
 |---|---|---|
@@ -144,8 +155,10 @@ defect and nothing is sent back. `AI_CERTIFICATE_REPAIR_UNDECLARED=true` sends t
 question ("once per joined row it gives A, once per record it gives B: which does the
 question ask for?") and accepts a second answer only when it returns B, or B rounded, under
 the same filters. It is off by default and meant for a small model: on a benchmark we did
-not write, a small model's answer carrying that difference was wrong in 44 cases of 45, and
-a strong model's in 1 of 7 (`docs/BIRD.md`).
+not write, a small model's answer carrying that difference was wrong in 44 cases of 45 over
+three runs, and a strong model's in 1 of 7 (`docs/BIRD.md`). In the one run made with this
+switch on, 13 answers of the small model still carried the difference afterwards: 9 wrong
+and 4 right. That run did not record how often the second answer replaced the first.
 
 ## When a check does not run
 
@@ -156,6 +169,8 @@ a strong model's in 1 of 7 (`docs/BIRD.md`).
 | `shape_not_covered` | A total over a join in a form the fan-out check does not cover |
 | `union_branches` | The statement combines queries with `UNION ALL`. Fan-out is probed inside each branch, but the other checks (filter values, coverage, period) look at the outer statement only |
 | `column_owner_unknown`, `no_single_primary_key`, `no_independent_route`, `rewrite_failed` | The second derivation could not be built for this statement |
+| `lineage_not_followed` | The value that is added up comes through a subquery in a way that could not be followed back to one table, so the figure was not re-derived |
+| `answer_truncated` | The answer was cut at the row limit. The groups shown were re-derived and agree, which says nothing about the others |
 | `groups_not_matched`, `too_many_groups` | The second derivation of a `GROUP BY` answer did not return every group of the answer, or the answer has more groups than it compares |
 | `probe_failed` | A verification query could not be run |
 | `probe_budget` | More verification queries were needed than one answer may run |
@@ -220,15 +235,19 @@ Version 1.19.0, every combination, on the demo database of each engine:
 | of which were called wrong | **0** | **0** | **0** |
 | of which went out clean | 5,898 | 5,898 | 5,898 |
 
-Of the right totals that did not go out clean, 344 were flagged with notes about the data
-that are true (a filter that removes no rows, mostly; 28 of them a note that rows repeat,
-where the total sits in `HAVING` or `ORDER BY` or the answer was cut at the row limit, and
-could not be computed a second time), and 50 were reported as not checked: grouped answers
+"Clean" in this test is `CHECKS_PASSED`, `CROSS_CHECKED` or `NOT_APPLICABLE`, one verdict
+more than the guarantee names: of the 5,898, 4,746 were `CROSS_CHECKED`, 1,104
+`CHECKS_PASSED` and 48 `NOT_APPLICABLE`. Of the right totals that did not go out clean, 344
+were flagged with notes about the data that are true (a filter that removes no rows, mostly;
+28 of them a note that rows repeat, where the total sits in `HAVING` or `ORDER BY` or the
+answer was cut at the row limit, and could not be computed a second time; the 28 is from
+the run's own output and is not in the published summaries), and 50 were reported as not
+checked: grouped answers
 cut at the row limit, where the groups shown agreed and nothing can be said of the others.
 On SQL Server 32 statements were refused by the database before running (the sum of an
 integer column overflows there). Summaries per shape are in
 `docs/benchmark-runs/property-test-1.19.0-*.json`; `npm run test:fuzz` runs a sample, `--all`
-runs every combination, and every run prints its seed.
+runs every combination, and a sampled run prints its seed.
 
 **On schemas this project did not design.** The same test builds its statements from any
 catalog: for each table with a numeric column and a relationship, the tables it points to
@@ -252,16 +271,17 @@ were reported as not checked. Some statements were refused by the database befor
 (on two of the databases `ROUND` with decimals does not exist for the floating-point column
 the generator picked).
 
-This is where the test earned its keep. Its first pass over these databases found sixteen
-wrong totals with a clean certificate, all of one kind the demo database could not show: a
+This is where the test earned its keep. Its first pass over these databases (no result file
+is kept for it) found sixteen wrong totals with a clean certificate, all of one kind the demo database could not show: a
 grouped answer with 13,645 groups, of which 500 were shown and re-derived, and all 500
 agreed. The certificate said `CROSS_CHECKED` about a statement whose other groups were
 wrong. Since 1.19.0, on an answer cut at the row limit a group that differs is still
 evidence, and all the shown groups agreeing is not agreement.
 
-**What this is not.** It is a property tested on a family of statements, on one schema, not
-a proof about all SQL. The same test, on the version before this one, found two wrong totals
-with a clean certificate and six right ones called wrong in its first 150 statements, which
+**What this is not.** It is a property tested on a family of statements, on the demo schema
+and seven others, not a proof about all SQL. The same test, on the version before this one,
+found two wrong totals with a clean certificate and six right ones called wrong in its first
+150 statements (no result file is kept for that run), which
 is how the rule above came to replace the ones before it, and one more kind on other schemas
 (above). A statement outside the family
 that breaks the property is a defect, and the generator is where its shape gets added. And
@@ -295,8 +315,8 @@ another statement and the certificate does not rate that one lower.
   and drops the second attempt.
 - **Use a stronger model than the one that writes.** The measurement below shows a model
   reviewing its own query finds little.
-- **Measure it on your own questions before turning it on.** It raised accuracy by eight
-  points on one benchmark and by nothing on another.
+- **Measure it on your own questions before turning it on.** In one pass on one benchmark
+  the answers it corrected were worth eight points (39 of 500), and on another nothing.
 
 ### What it did on BIRD Mini-Dev
 
@@ -324,9 +344,9 @@ another statement and the certificate does not rate that one lower.
   questions that played no part before it is quoted as a general one.
 - **It is one run.**
 - **166 answers are still wrong.** On 47 of them the reviewer said the statement answers the
-  question, on 58 it could not tell, and 59 it objected to and the second attempt did not
-  fix. A third of the questions stays out of its reach.
-- **`gpt-6.1-terra` alone gets 429 of 500** on the same questions. The review closes a part
+  question, on 2 that it answers on this data, on 58 it could not tell, and 59 it objected
+  to and the second attempt did not fix. A third of the questions stays out of its reach.
+- **`gpt-6.1-terra` alone gets 429 of 500** on the same questions (one pass, engine 1.10.0). The review closes a part
   of the gap between a cheap and a strong writer at the price of one strong call per
   answer; it does not close it.
 
@@ -340,7 +360,9 @@ Because the instructions were adjusted on the 2026 questions, the run was repeat
 nothing changed, on the 500 questions of the earlier Mini-Dev release, which the benchmark
 keeps archived (2025-07-04), over the same databases. An earlier version of this page
 called that set unseen. It is mostly another set: 13 of its questions have the same text
-as a 2026 question. Without those 13 the result below is the same (one answer gained). The bar
+as a 2026 question (counted on the question files, which are not in this package; the
+result files hold no question text). Without those 13 the result below is the same (one
+answer gained). The bar
 was fixed before the run: three wrong answers turned right for each right one turned wrong,
 and fewer than 10 right ones turned wrong.
 
@@ -372,7 +394,8 @@ What the eleven changed answers show, read one by one:
 **Why the two sets differ.** An earlier version of this page put it down to the length of
 the questions. An independent review of both runs tested that and it does not hold: within
 the 2026 set the short questions are the ones most often corrected. It found two other
-things, which fit the data better.
+things, which fit the data better. Its counts below come from that review, made by reading
+answers one by one, and are not reproducible from this package.
 
 - **The 2025 references are unreliable.** The benchmark replaced that edition for this
   reason. Of 22 answers scored wrong that the reviewer had accepted, the review found the
@@ -443,7 +466,8 @@ Two things in the detail are worth more than the totals.
   the reason the certificate is built on deterministic checks and not on a second opinion
   from the model that wrote the answer.
 - **The false alarms we read are not nonsense.** We read ten of the fifteen right answers
-  that both judges flagged. The reasons given describe a difference between the statement
+  that both judges flagged (a reading by hand; the verdicts and the judges' sentences are
+  in the file, our reading of them is not). The reasons given describe a difference between the statement
   and the question: a filter written as a list of values where the question says "above
   15", a count of rows where the question asks for distinct people, a code with a leading
   zero. Execution says the rows match the reference on this data. We have not checked,
@@ -453,7 +477,8 @@ Two things in the detail are worth more than the totals.
 
 ### The same judges, shown the data
 
-The fifteen right answers both judges flagged were then checked on the database. Nine are
+The fifteen right answers both judges flagged were then checked on the database, by hand
+(the classification that follows is ours and is not reproducible from this package). Nine are
 right only on today's data (the list of values covers every value the column holds now,
 nobody has two rows), two were the judge's mistake for not seeing how the column is stored
 (the code is kept with its leading zero), and four are a matter of how the question is read.

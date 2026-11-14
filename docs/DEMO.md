@@ -41,6 +41,10 @@ each question has a trap that produces a plausible wrong number (join fan-out, a
 that does not exist, a period the data only partly covers, a filter that removes nothing), and
 the score is whether the certificate caught it.
 
+`contexts/demo/eval/bank.json` is the other kind of bank, the one an installation keeps for
+itself: questions with a reference statement, read by `npm run evaluate`
+(`docs/EVALUATION.md`) and by `npm run loadtest` (`docs/CAPACITY.md`).
+
 ## PostgreSQL
 
 The same data, questions and context run on PostgreSQL 16:

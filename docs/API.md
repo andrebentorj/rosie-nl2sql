@@ -2,12 +2,20 @@
 
 All routes are mounted under `/api/assistant`. Bodies are JSON (`Content-Type: application/json`,
 50 KB cap, compressed bodies refused). Authentication is a bearer token
-(`Authorization: Bearer <ROSIE_API_TOKEN>`) on every route except `GET /project-info` and
-`GET /health`. In production the token is injected by the host app's proxy, never by the
-browser (see `docs/INSTALL.md`). Rate limits are per client IP and per route group:
+(`Authorization: Bearer <ROSIE_API_TOKEN>`, or a user's JWT when `docs/IDENTITY.md` is
+configured) on the routes that answer or record something: `/ask`, `/export`, `/explain`,
+`/feedback` and `/certify`. `GET /project-info`, `GET /health` and `GET /widget.js` are
+public. `/metrics` and `/admin/*` take their own credentials, described with each route. In
+production the shared token is injected by the host app's proxy, never by the browser (see
+`docs/INSTALL.md`). Rate limits are per client IP and per route group (`/ask`, `/export`,
+`/explain`, `/feedback` and `/certify` each count on their own):
 `AI_MAX_QUERIES_PER_HOUR` / `AI_MAX_QUERIES_PER_DAY`, plus `AI_CONCURRENCY_LIMIT` in-flight
 requests per process. The MCP surface is documented separately in `docs/MCP_SERVER.md`; both
 front doors run the same engine.
+
+Errors common to every route: `413` for a body over 50 KB and `400` for a body that is not
+valid JSON, both as `{ "error": "..." }`. A request whose `Origin` header is not in
+`ROSIE_CORS_ORIGIN` is refused with `500`.
 
 Middleware order on `/ask`: feature flag (`AI_ASSISTANT_ENABLED`) → read-only privilege gate
 (503 while the probe fails) → audit-policy gate → auth → hourly limit → daily limit →
@@ -25,16 +33,23 @@ Ask a question in natural language.
   "history": [
     { "role": "user", "content": "previous question" },
     { "role": "assistant", "content": "previous answer" }
-  ]
+  ],
+  "previousAnswerHandle": "optional: the answerHandle of the answer this question refines",
+  "stream": false
 }
 ```
 
-- `question` is required, 3 to `AI_MAX_INPUT_LENGTH` (default 2000) characters. Raw SQL,
-  write intent, requests for credentials and prompt-injection patterns are refused before any
-  model call.
-- `user` is **audit and personalization only**, never authorization.
+- `question` is required, 3 to `AI_MAX_INPUT_LENGTH` (default 2000) characters. A question
+  that starts with a SQL keyword, write intent, requests for credentials or for a masked
+  column, and prompt-injection patterns are refused before any model call.
+- `user` is **audit and personalization only**, never authorization. It is ignored when the
+  request carries a verified JWT.
 - `history` is optional: at most 10 entries are kept, each truncated and passed through the
   injection filter; the model sees the last 6.
+- `previousAnswerHandle` is optional. When it verifies (same caller, same project, not
+  expired), the engine starts from that answer's SQL and question, for follow-ups such as
+  "now only for Q3". A handle that does not verify is ignored, never an error.
+- `stream` is optional, see "Streaming the answer" below.
 
 Response `200`:
 
@@ -52,7 +67,7 @@ Response `200`:
     "skipped": [],
     "provenance": { "projectId": "sales", "model": "gpt-6-luna", "engineVersion": "1.0.0", "catalogVersion": "…", "generatedAt": "…" }
   },
-  "answerHandle": "base64url.payload.signature",
+  "answerHandle": "<base64url payload>.<base64url signature>",
   "columns": [ "n" ],
   "rows": [ { "n": 412 } ],
   "truncated": false,
@@ -62,8 +77,10 @@ Response `200`:
 }
 ```
 
-- `clarification`, when present, is `{ "question": "...", "options": ["...", "..."] }` and
-  `sql`/`rows` are null: render the options as chips and ask again with the refined question.
+- `clarification`, when present, is `{ "question": "...", "options": ["...", "..."] }`. Then
+  `sql`, `certificate` and `answerHandle` are `null`, `rows` and `columns` are empty and
+  `answer` repeats the question: render the options as chips and ask again with the refined
+  question.
 - `certificate.verdict` is one of `CONTRADICTED`, `FLAGGED`, `CROSS_CHECKED`, `NOT_CHECKED`,
   `CHECKS_PASSED`, `NOT_APPLICABLE`. Every answer that ran SQL has a certificate; it is
   `null` only on a clarification or a refusal. `skipped` lists the checks that were due and
@@ -74,17 +91,20 @@ Response `200`:
 - `approval` (not shown above) is `null` unless the answer ran an approved query; then it
   carries `id`, `question`, `approvedBy`, `approvedOn`, `reviewBy` and the `params` used
   (`docs/APPROVED_QUERIES.md`).
-- `unfinished` (not shown above) is `null` unless the request was stopped by a limit before
-  the model ran the query that answers the question; then it is `{ "reason" }`
-  (`query_budget`, `tool_calls`, `token_budget` or `loop_limit`), `sql` and `table` are
-  `null` and `narrative` says that there is no answer. A query the model ran only to look at
-  the data is never returned as the answer.
-- `questionReview` (not shown above) is `null` unless `AI_QUESTION_REVIEW=true` and the review
-  ran; then it carries `verdict` (`answers`, `answers_on_this_data`, `does_not_answer`,
-  `cannot_tell`), `reading` (one sentence), `model`, `outcome` (`corrected`, `not_improved`,
-  `unchanged`, `failed` or `null`) and `firstSql` when the answer was replaced. It is an
-  opinion of a model and never changes `certificate` (`docs/CERTIFICATE.md`, "The question
-  review").
+- `unfinished` (not shown above, returned since 1.24.0) is `null` unless the request ended
+  with no query run as the answer. Then it is `{ "reason" }`, `sql` is `null` and `rows` and
+  `columns` are empty. The reason is the limit that stopped the model (`query_budget`,
+  `tool_calls`, `token_budget` or `loop_limit`), and `answer` says that there is no answer;
+  or `query_failed` when the statement meant as the answer was refused by the validator or
+  failed in the database, and `answer` keeps what the model said about it. A query the model
+  ran only to look at the data is never returned as the answer, and neither is a statement
+  that did not run (before 1.24.0 its text was returned in `sql` with no rows).
+- `questionReview` (not shown above, returned since 1.24.0) is `null` unless
+  `AI_QUESTION_REVIEW=true` and the review ran; then it carries `verdict` (`answers`,
+  `answers_on_this_data`, `does_not_answer`, `cannot_tell`), `reading` (one sentence),
+  `model`, `outcome` (`corrected`, `not_improved`, `unchanged`, `failed` or `null`) and
+  `firstSql` when the answer was replaced. It is an opinion of a model and never changes
+  `certificate` (`docs/CERTIFICATE.md`, "The question review").
 - `metric` (not shown above) is `null` unless the statement was compiled by the engine from a
   declared metric; then it carries the metric's `name`, `expression`, `table`, the
   `dimensions` and `filters` used and the `joins` added (`docs/METRICS.md`).
@@ -94,13 +114,19 @@ Response `200`:
 - `certificate.repair`, when present, records that the checks flagged a first query and the
   model was asked once to correct it (`docs/CERTIFICATE.md`).
 - `answerHandle` is the signed ticket for the follow-up routes below; it expires after 15
-  minutes and is bound to the caller identity and the project.
-- A refused question (write intent, sensitive request, injection, too long) still returns
-  `200` with the refusal text in `answer` and no `sql`.
+  minutes and is bound to the caller identity and the project. The caller identity is the
+  verified user under JWT. With the shared `ROSIE_API_TOKEN` every caller is the same
+  identity, so the handle is then bound to the installation, not to a person.
+- A question refused by the engine's own guards still returns `200`, with the refusal text
+  in `answer` and no `sql`: write intent, a request for credentials or for a masked column,
+  a question that starts with SQL, and one shorter than 3 characters. A question refused at
+  the door returns `400`: missing or empty, longer than `AI_MAX_INPUT_LENGTH`, or caught by
+  the injection filter (`{ "error": "Your question was blocked by the safety filter." }`).
 
-Errors: `400` invalid body or question, `401` bad token, `429` rate limited (`Retry-After`),
-`503` disabled / security hold / busy / audit policy, `500` engine error (audited as
-`status=error`).
+Errors: `400` invalid body or question, `401` bad token, `404` assistant disabled
+(`AI_ASSISTANT_ENABLED` is not `true`, or no model key is set), `429` rate limited
+(`Retry-After`), `503` security hold / busy / audit policy, or no credential configured
+with `NODE_ENV=production`, `500` engine error (audited as `status=error`).
 
 ### Streaming the answer
 
@@ -148,7 +174,9 @@ Re-run a previous answer's validated SQL past the display cap (up to 50 000 rows
 Response `200`: `{ "columns": [{ "key": "n", "label": "n" }], "rows": [...], "rowCount": 1, "exportCapped": false }`.
 `404` with a generic message for any unverifiable handle (expired, tampered, another owner or
 project): the reason is never disclosed. `400` if the SQL no longer passes the validator.
-Audited as `status=export` (or `export_rejected` / `export_error`).
+`403` when a row policy refuses the caller (`docs/ROW_POLICIES.md`). `500` when the query
+fails. Audited as `status=export` (or `export_rejected` / `export_denied` /
+`export_error`).
 
 ## POST /explain
 
@@ -163,14 +191,16 @@ Audited as `status=explain` / `explain_error`.
 
 ## POST /feedback
 
-Thumbs up or down on an answer. Always accepted (`202`), even when the handle has expired.
+Thumbs up or down on an answer. A well-formed vote is always accepted (`202`), even when
+the handle has expired or is missing. `400` when `messageId` is missing or `rating` is not
+`"up"` or `"down"`.
 
 ```json
 { "messageId": "uuid", "rating": "up", "comment": "optional, 500 chars", "answerHandle": "…" }
 ```
 
 Response: `{ "ok": true }`. Stored in `rosie_feedback` with the question and SQL snapshot
-taken from the handle when it still verifies.
+taken from the handle when it still verifies and is the handle of that `messageId`.
 
 ## POST /certify (off by default)
 
@@ -197,8 +227,9 @@ the certificate reads `CONTRADICTED`, with 2328.60 as the figure over distinct i
 The statement goes through what every statement of the assistant goes through: read-only,
 only the tables and columns of the catalog, never a masked column, the row policies of the
 caller, the row cap, the read-only connection. A statement that fails any of that answers
-422 with the reason and nothing runs. Same credential, gates and quotas as `/ask`, counted
-on their own, and every request is audited like an answer.
+422 with `{ "error": "<the reason>", "suggestion": "<a hint, or null>" }` and nothing runs.
+`400` when `sql` is missing. Same credential, gates and quotas as `/ask`, counted on their
+own, and every request is audited like an answer.
 
 It answers 404 until `ROSIE_CERTIFY_SQL=true`. That is deliberate: everywhere else a caller
 asks in words and never hands the engine SQL. Turning it on does not widen what can be read.
@@ -214,14 +245,25 @@ Metadata the widget needs before the first question, plus the security gate stat
 {
   "name": "Sales", "fullName": "…", "description": "…", "welcomeMessage": "…",
   "suggestions": [ "…" ], "aiDisclaimer": "…", "governance": { "owner": "…" }, "theme": null,
+  "brand": null, "widgetVersion": "2026.11.8",
   "maxInputLength": 2000,
   "securityHold": false, "securityCode": null, "securityMessage": null, "supportContact": null
 }
 ```
 
 `maxInputLength` is the longest question the server accepts (`AI_MAX_INPUT_LENGTH`); the
-widget stops the typing there. `securityHold: true` means the read-only user has more than SELECT privileges and every
+widget stops the typing there. `brand` is the validated white-label block of `project.json`
+(`assistantName`, `tagline`, `hideMascot`) or `null`. `widgetVersion` is the version of the
+bundle this backend serves at `/widget.js`; a copied widget compares itself with it.
+`securityHold: true` means the read-only user has more than SELECT privileges and every
 question is refused until an administrator fixes the grants.
+
+## GET /widget.js (public)
+
+The widget bundle this backend was deployed with, as `application/javascript`. It carries
+`ETag`, `Cache-Control: public, max-age=300, must-revalidate` and `X-Rosie-Widget-Version`,
+and answers `304` to a matching `If-None-Match`. `404` when the deployment does not ship the
+bundle.
 
 ## GET /health (public)
 
@@ -229,13 +271,21 @@ question is refused until an administrator fixes the grants.
 {
   "status": "ok",
   "audit": { "dbHealthy": true, "schemaBlockedTables": null, "pendingRetries": 0,
-             "dbWriteFailures": 0, "droppedRecords": 0, "lastDbFailureAt": null, "fileSinkOk": true }
+             "dbWriteFailures": 0, "droppedRecords": 0, "rejectedRows": 0,
+             "lastDbFailureAt": null,
+             "fileSinkOk": true, "fileDurability": "write", "fileWriteFailures": 0,
+             "fileReopened": 0, "lastFileError": null }
 }
 ```
 
 `status` is `degraded` while either audit sink is failing; page on `dbHealthy=false` or
-`fileSinkOk=false` (a governance control that fails silently is not a control). Raw database
-error text is never included here; it lives in the server logs.
+`fileSinkOk=false` (a governance control that fails silently is not a control).
+`schemaBlockedTables` names engine tables the database refused as missing or incomplete (run
+the schema file). `rejectedRows` counts rows the database refused for what they hold; the
+file has them. `fileDurability` is `write`, or `fsync` with `ROSIE_AUDIT_FSYNC=true`.
+`fileReopened` counts the times the file was opened again after a rotation. Raw database
+error text is never included here; it lives in the server logs. `lastFileError` is the text
+of the last failure to write the audit file.
 
 ## GET /metrics (its own token)
 
@@ -270,7 +320,15 @@ neither. See [OPERATIONS.md](OPERATIONS.md).
 
 Every `/admin/*` route accepts, as bearer, the shared `ROSIE_ADMIN_TOKEN` or a JWT carrying
 the administrator role (`ROSIE_ADMIN_JWT_CLAIM`, `ROSIE_ADMIN_JWT_VALUE`). A valid JWT without
-the role answers 403; an invalid one, 401.
+the role answers 403; an invalid one, 401. The console page itself is served without a
+credential once one is configured: it holds no data and asks for the credential. Refused
+requests are counted per address, and past 30 in a minute that address gets 429. Accepted
+requests are limited to 120 a minute per administrator.
+
+## GET /admin/evaluation (the admin token)
+
+The last `npm run evaluate` run, in full, as JSON (`docs/EVALUATION.md`). 404 with a message
+when no evaluation has been run.
 
 ## POST /admin/approve, /admin/describe, /admin/dismiss (the admin token and the write switch)
 
@@ -279,11 +337,13 @@ The three changes the console can make. They need the admin token **and**
 
 | Route | Body | Effect |
 |---|---|---|
-| `/admin/approve` | `{ "messageId", "id", "by", "reviewBy"?, "question"? }` | The recorded SQL of that answer becomes the approved query `id`. The body carries no SQL: the server reads it from its own record and validates it |
+| `/admin/approve` | `{ "messageId", "id", "by", "reviewBy"?, "question"?, "seenSql"? }` | The recorded SQL of that answer becomes the approved query `id`. The server reads the SQL from its own record and validates it. `seenSql` is the statement the reviewer was shown: when it is sent and differs from the record, nothing is approved |
 | `/admin/describe` | `{ "table", "column"?, "description", "by" }` | Rewrites one description in the catalog. An empty description removes it |
 | `/admin/dismiss` | `{ "messageId", "by", "note"? }` | The answer leaves the review queue |
 
 Answers: 200 `{ "ok": true, ... }`; 403 when writing is off; 404 for an unknown answer, table
-or column; 409 when the id exists or the context directory cannot be written; 422 when the
-input is refused or the context would not build with the change, in which case nothing
-changed. See [OPERATIONS.md](OPERATIONS.md).
+or column; 409 when the id exists, the context directory cannot be written, or `seenSql` is
+not the statement on record; 422 when the input is refused or the context would not build
+with the change, in which case nothing changed; 503 when the attempt could not be written to
+the audit file, in which case nothing changed either. `by` is used only with the shared
+token; with a JWT the name comes from the token. See [OPERATIONS.md](OPERATIONS.md).

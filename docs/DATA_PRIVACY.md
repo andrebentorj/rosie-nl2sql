@@ -12,23 +12,38 @@ stay in your infrastructure. The one external party is the **model provider** co
 | What | Detail |
 |---|---|
 | The question | As typed by the user, after the length limit and the injection filter. |
-| Conversation history | The previous turns of the same conversation, at most 10, sanitized again on every request. |
+| Conversation history | The previous turns of the same conversation: at most 10 are accepted and sanitized again on every request, and the last 6 are sent. |
+| The previous answer, on a follow-up | When the request carries `previousAnswerHandle`: the SQL and the question of that answer, so the model starts from them. |
 | Your system prompt | The full text of `system-prompt.txt`. |
 | Schema metadata | Table names, descriptions and synonyms; names, type family and enum codes of the columns that are **not** masked; relationships; metric definitions. |
+| Column descriptions and code meanings | What the catalog says each unmasked column means, and the meaning of each enum code: when the model calls `describe_table`, and in every prompt with `AI_CATALOG_DESCRIPTIONS=true`. |
+| Data notes (`profileNote`) | Only if the catalog carries them. `npm run profile-columns` writes them **from your data**: how an unmasked column records a missing or special value (for example that 0 or `-` stands for "not recorded", with the smallest other value, or that codes are zero-padded text). They are counts and patterns, not rows, but they are derived from data and go into every prompt while `AI_CATALOG_PROFILE` is on, which is the default. |
 | Verified examples | The few question and SQL pairs from `verified-queries.json` most similar to the question. |
 | Query results, sampled | Up to **30 rows** of each query the model runs (`AI_LLM_RESULT_MAX_ROWS`), with the true total. A question may run up to 5 queries (`AI_MAX_QUERIES_PER_REQUEST`). The user receives the full result; the model sees the sample. |
 | Sample rows | When the model calls `sample_rows`: at most 5 rows of one table, unmasked columns only, text cut at 100 characters. |
 | Distinct values | When the model calls `lookup_values`: at most 25 distinct values of one unmasked column. |
-| The SQL of an answer | When the user asks for an explanation of a query (`/explain`). |
+| The SQL of an answer | When the user asks for an explanation of a query (`/explain`), with the question. |
+| The second attempt | When the certificate flags a first query (`AI_CERTIFICATE_REPAIR`, on by default): what the checks found, figures included, goes back to the model once. |
+| The question review | Only with `AI_QUESTION_REVIEW=true` (off by default): the question, the final statement, its first 8 rows, and for up to 6 unmasked columns the statement filters on, up to 40 of their values with how many rows hold each. It goes to `AI_QUESTION_REVIEW_MODEL`, which may be a different model from the one that answers, at the same provider endpoint. |
 
 Results are sent because the model writes the plain-language answer from them. Set
 `AI_LLM_RESULT_MAX_ROWS` lower to send less; the answer then describes fewer rows.
+
+### While the context is generated
+
+`npm run init` is the other moment something is sent. To write the context it sends the
+model provider your schema: table and column names, types, keys and relationships. With
+`--samples` it also sends sample values of unmasked columns, which gives better
+descriptions and enum codes; that is off by default. The columns it masks are left out of
+the samples. It runs once, at install time, with the key in `OPENAI_API_KEY`.
 
 ## Never sent
 
 - **Masked columns.** Columns in `masked-columns.json` are absent from the schema metadata,
   refused by the SQL validator, left out of `sample_rows` and refused by `lookup_values`.
-  Their names and their values do not reach the provider. Masking is the control for personal
+  Their values never reach the provider. Since 1.24.0 their names do not either: before
+  that version the `describe_table` tool returned the name, type and description of a
+  masked column when the model asked for its table. Masking is the control for personal
   data: list every column that holds it. `npm run generate-catalog` prints the column names
   that look like personal data and are not masked.
 - **Rows outside the caller's policy.** With [row policies](ROW_POLICIES.md), every read is
@@ -70,8 +85,9 @@ capability Rosie depends on.
 Two cautions, stated plainly:
 
 - **Accuracy depends on the model.** The published benchmark (`docs/BENCHMARK.md`) was
-  measured with one hosted model. A smaller self-hosted model will write worse SQL. Run the
-  benchmark against your endpoint before you rely on it; it is the same command.
+  measured with one hosted model. A smaller self-hosted model will write worse SQL. Measure
+  your endpoint on your own questions before you rely on it: `npm run evaluate`
+  (`docs/EVALUATION.md`).
 - **The safety layers do not depend on the model.** The SQL validator, the table and column
   allowlist, masking, row policies and the Answer Certificate are deterministic code that
   runs in your server whatever model is behind `AI_BASE_URL`. A weaker model produces more
@@ -95,8 +111,9 @@ is removed unless you schedule it:
 
 ```bash
 npm run retention -- --days 365               # report: how many records are older
-npm run retention -- --days 365 --confirm     # remove them from the three tables
+npm run retention -- --days 365 --confirm     # remove them from the three log tables
 ```
 
-The command touches only those three tables. The audit file is not rotated by Rosie; use
+The command touches only `rosie_audit_log`, `rosie_answer_certificate` and `rosie_feedback`,
+and the account that runs it needs DELETE on them (`docs/INSTALL.md`, Step 3). The audit file is not rotated by Rosie; use
 your log tooling for it.
