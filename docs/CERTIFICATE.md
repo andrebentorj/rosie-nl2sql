@@ -58,6 +58,16 @@ The names changed in version 1.0.1: `VERIFIED` became `CROSS_CHECKED`, `UNVERIFI
 `FLAGGED`, `QUALIFIED` became `CHECKS_PASSED`, and `NOT_CHECKED` and `NOT_APPLICABLE` are new.
 `VERIFIED` was dropped because readers took it to mean "correct".
 
+The verdict is one word over several independent findings and is not a level of trust: on a
+public benchmark, answers under the same clean verdict were right 16% to 99% of the time
+depending on the model (`docs/BIRD.md`). Since 1.29.0 `certificate.evidence` carries the
+same findings dimension by dimension, including the ones the verdict takes no account of
+(whether the question was understood, how the data records missing values, whether a person
+approved the query, whether the table declares a business entity). It is derived from the
+same parts as the verdict and a unit test holds the two to each other
+([EVIDENCE.md](EVIDENCE.md)). In the audit table the `provenance` column also holds
+`evidence` (the status and the facts of each dimension).
+
 ## The checks
 
 | Check (`id`) | Detects | Applies when | Does not cover |
@@ -67,6 +77,9 @@ The names changed in version 1.0.1: `VERIFIED` became `CROSS_CHECKED`, `UNVERIFI
 | `coverage` | A filter that keeps every row, so probably is not filtering what was meant | The outer `SELECT` has a `WHERE` (a nested one is not looked at) | A filter that legitimately keeps everything is still reported (about 5% of correct answers in our benchmark) |
 | `period` | A date range that runs past the last record, or a "last N months" question answered over an old fixed range | A `SELECT` of the statement bounds a date column: the outer one, or (since 1.27.0) one inside a `WITH` body, a derived table or a subquery, up to three of them; more than that is reported as not checked (`nested_filters`) | Gaps inside the range; several date columns. It states a fact about the data and is right about a correct answer as often as about a wrong one |
 | `zero_values` | An average that counts rows holding 0 where 0 may stand for "not recorded": it gives how many such rows there are, the smallest other value and the average without them | `AVG` of a plain numeric column of a catalog table in the outer `SELECT`, when the rows averaged hold zeros and the smallest value above 0 is 2 or more | A 0 that is a real zero in such a column is still reported (the line says "may"). Not looked at: totals, counts, minimums, an average inside a subquery or over an expression, `AVG(x) FILTER (...)`, other placeholders (`-1`, `9999`, `'N/A'`) |
+| `entity_grain` | A total, an average or a count taken over rows that are several per business entity (a card printed in five sets, a customer registered twice): it gives the rows, the distinct entities and, where each entity has one value, the figure taking each entity once | The table the figure is taken over declares an `entity` in the catalog (`contexts/example/README.md`), and the outer `SELECT` adds up, averages or counts a column of it (or counts its rows alone) | It warns of two readings and does not say which was meant. Nothing is looked at where no entity is declared; a key of more than one column, a `MIN`/`MAX`, an aggregate with `DISTINCT` or `FILTER`, and a figure over a subquery are not looked at |
+| `average_of_averages` | An average taken over figures that a subquery already averaged, or computed as a ratio, per group: every group then weighs the same however many rows it holds | The outer `SELECT` averages a column that a `WITH` body or a derived table computes with `AVG`, or as one aggregate divided by another, under a `GROUP BY`. Read from the statement, no probe | It warns of two readings: the figure is right for "the average of the monthly averages". It gives no second figure. An average of per-group totals or counts is not looked at |
+| `non_additive` | A total of a column that does not add up across rows (a balance, a rate, a percentage, a unit price) | The outer `SELECT` has `SUM` of a column the catalog declares `"additive": false`. Read from the statement, no probe | Only what is declared: no column is guessed non-additive from its name. A balance summed across accounts on one day is a right figure and is flagged all the same |
 | `metric` | A question that names a declared metric, answered with a different expression, table or filter | The context declares metrics (`docs/METRICS.md`) | It compares the parts of the definition with the statement; it does not prove the final expression is the metric |
 
 ### The second derivation (`crossCheck`)
@@ -168,6 +181,11 @@ when it returns the average without those rows, or that figure rounded, and keep
 filter of the first; the one filter it may drop is the `IS NOT NULL` on that column. A
 grouped average holds no single figure to reach and is not sent back. This path has unit
 tests and has not been measured with a model.
+
+It also sends back a figure taken over several rows per declared entity (`entity_grain`),
+as the question "is this about each row or about each card?", and accepts a second answer
+only when it returns the figure taken once per entity, keeps every filter of the first and
+still totals, averages or counts. Unit tests only; not measured with a model.
 
 ## When a check does not run
 

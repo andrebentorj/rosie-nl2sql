@@ -181,6 +181,7 @@ What is translated:
 
 | Source | Becomes |
 |---|---|
+| dbt entity of type `natural` (a real-world key in a table that holds several rows for it, such as a type II slowly changing dimension) | The `entity` of its table: `{ "name": <entity>, "key": <column> }`, set only where the catalog declares none (since 1.29.0). `unique` and `foreign` entities are not: one is a row per thing, the other a reference |
 | dbt `simple` metric over a `sum`, `count`, `count_distinct`, `average`, `min`, `max` or `sum_boolean` measure | `expression` and `table` |
 | dbt `ratio` metric over two measures of one table, with no filter of their own | One expression, `numerator / denominator` |
 | Any other dbt `ratio` metric (sides in different tables, a side that names a metric, a filter on one side) | A ratio of two declared metrics. A side that is a bare measure or carries a filter becomes a metric of its own, named `<ratio>_numerator` or `<ratio>_denominator`, so its filter stays on its side |

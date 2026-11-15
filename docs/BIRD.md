@@ -11,6 +11,21 @@ original release: its file labels 460 of the 500 questions "challenging", agains
 original. Nobody at Rosie wrote the questions, the databases or the reference
 answers, which is what `docs/BENCHMARK.md` cannot say about itself.
 
+**About the reference answers.** An audit published in January 2026 (Jin, Choi, Zhu and
+Kang, [arXiv 2601.08778](https://arxiv.org/abs/2601.08778)) found an annotation error in 263
+of the 498 distinct questions (52.8%) of what it calls "the first version of BIRD Mini-Dev":
+a reference that does not match the question, does not match the data, uses wrong domain
+knowledge, or settles an ambiguous question one way. On 2026-10-28 the maintainers released
+the 2026 update, which is the one run here, saying that "following community feedback and a
+human-in-the-loop review" they "corrected annotations and replaced selected instances".
+Neither source says the update answers that audit, and nobody has published an error rate
+for the updated references. So: the absolute figures on this page (54%, 86%) are against
+references of unknown quality, and our own reading of the stronger model's wrong answers
+found about one in four not to be errors for a user. The comparisons between two
+configurations are less exposed, since a wrong reference counts against both sides alike.
+These figures must not be set beside the BIRD leaderboard, which is scored on a hidden test
+set (the best entry there is 83.4% as of 2026-11-15).
+
 ## Result
 
 2026-11-10, model `gpt-6-luna`, PostgreSQL 17, one pass, cross-check enabled.
@@ -573,11 +588,42 @@ numeric identifier must not be cast), and 1.27.0 rewords them:
 | Numbers kept as text | `cast before comparing or sorting` | three notes by what the values look like: codes with leading zeros (compare as text), digits of one length (only arithmetic needs a cast), other numbers (sorting, ranges and arithmetic need a cast) |
 | How to read the notes (once per prompt) | leave out what the note marks as "not recorded" | the same for questions about known or recorded values, and: a note is an observation, "may mean" is a hypothesis, and for a total, an average or a count over all rows a 0 or a marker can be a real value |
 
-**So the figures above are of the old notes, and the new ones have not been measured.**
-They say less firmly what the old ones said, which may cost part of the gain on this
-benchmark and is meant to avoid the opposite error on data where 0 is a real zero, which no
-question here tests. A person who knows the data settles a hypothesis by setting
-`profileNoteConfirmed` on the column, and the note then reaches the model as confirmed.
+They say less firmly what the old ones said, which is meant to avoid the opposite error on
+data where 0 is a real zero, which no question here tests. A person who knows the data
+settles a hypothesis by setting `profileNoteConfirmed` on the column, and the note then
+reaches the model as confirmed.
+
+### The reworded notes, measured (engine 1.27.0, three passes)
+
+The criteria were written before the runs: the new profile against the plain passes had to
+be ahead with p under 0.05, and still ahead without the `superhero` database, to be called
+a gain for the small model; against the old profile, behind with p under 0.05 would be a
+cost. Both comparisons differ in two things, the notes and the engine version (1.24.0
+against 1.27.0), and that was stated beforehand as a weakness.
+
+| `gpt-6-luna` | Passes | Against | Ahead / behind | p |
+|---|---|---|---|---|
+| Profile, notes of 1.27.0 | 300, 302, 301 | plain, 1.24.0 (273, 278, 263) | 123 / 83 | 0.006 |
+| | | the same without `superhero` | 93 / 79 | 0.32 |
+| | | profile, notes of 1.24.0 (319, 310, 330) | 81 / 106 | 0.079 |
+
+**What may be said.** The profile with the reworded notes is ahead of no profile, and the
+whole of that lead is one database: without `superhero` the two are not told apart. By the
+criterion that is a gain on that kind of data (a marker value standing for "not recorded"),
+not a general gain for the small model. Against the old notes the mean is 18.7 answers
+lower and the test does not tell them apart; it is close enough to the line that the
+weakness stated beforehand applies, and nothing is claimed about the cost of the rewording
+until the plain configuration has three passes on the same engine version.
+
+**Seen afterwards, and not a result.** `formula_1` went from 38.0 (plain) and 44.0 (old
+notes) to 31.7 right answers. In the questions lost there the times of a qualifying session
+are text and the missing ones are an empty string: with the old notes the model wrote
+`q2 <> ''`, with the new ones it kept `q2 IS NOT NULL` alone. No statement was judged
+differently between the two campaigns, so this is the model's writing, not the judging.
+It was found by looking at the passes, so it is a lead to test, with its criterion fixed
+first, and not a finding.
+
+`npm run bird:compare -- --a docs/benchmark-runs/bird-pass-luna-plain-1-1.24.0.json,docs/benchmark-runs/bird-pass-luna-plain-2-1.24.0.json,docs/benchmark-runs/bird-pass-luna-plain-3-1.24.0.json --b docs/benchmark-runs/bird-pass-luna-profile-1-1.27.0.json,docs/benchmark-runs/bird-pass-luna-profile-2-1.27.0.json,docs/benchmark-runs/bird-pass-luna-profile-3-1.27.0.json`.
 
 ### Right answers by verdict
 
@@ -669,6 +715,47 @@ Run again, with no model, over the final statement of every answer of the fiftee
   statement is written and one after.
 - **The second attempt for it was not measured.** With `AI_CERTIFICATE_REPAIR_UNDECLARED`
   the flag goes back to the model as a question; no pass has been run with that.
+
+### An entity that is not one row (1.29.0)
+
+Question 110 asks for an average over cards and says that "a card printed in several sets is
+still just one card". The table holds one row per printing. The small model averaged over
+printings in all nine passes it answered it; the second derivation took each ROW once, by
+the primary key, agreed, and three of those answers went out `CROSS_CHECKED`; with the
+two-figure question on, the second attempt removed the repetition of the join, kept the
+repetition of the table, and was accepted twice. Two independent reviews named this as the
+limit of the check: the key of a table is not always the thing a question is about.
+
+What a card is cannot be read from the data, so since 1.29.0 it can be declared on the
+table in the catalog (`"entity": { "name": "card", "key": "name" }`). The prompt then says
+what one card is, and a check (`entity_grain`) counts rows against distinct entities under
+a total, an average or a count.
+
+Run again with no model over the final statements of the fifteen passes, with that one
+declaration added by us to the card database:
+
+- **Question 110: flagged in all 9 answers that were wrong, with the figure taken once per
+  card, 3.43; the reference returns 3.4.**
+- **Over the whole card database it warns on 121 answers, 52 wrong and 69 right** (with the
+  small model alone 16 wrong and 8 right; with the stronger one 6 wrong and 19 right). This
+  is not a rate of false alarms and not a result: most questions of this database count
+  printings and call them cards, and the reference counts rows, so a declaration that a
+  card is a name does not fit how this benchmark uses the table. We added it knowing which
+  question it was for. What the replay shows is the mechanism, and what declaring an entity
+  costs where it does not fit: every figure over the table is flagged as having two
+  readings.
+- Nothing was measured with a model: neither what the line added to the prompt does to the
+  statements, nor the second attempt.
+
+### Two checks read from the statement (1.29.0)
+
+Checkers of SQL text that work from declared rules exist as open source (Sqlsure is one),
+and two of their rules were missing here. Both are read from the statement, with no probe.
+`non_additive` needs a declaration and nothing in these databases declares one, so it has no
+figures. `average_of_averages` needs none: over the final statements of the fifteen passes
+it warns on 13 answers of about 7,500, on five questions, 6 of them wrong and 7 right by the
+benchmark. It is rare, and it is right about half the time it speaks, which is what a
+warning of two readings looks like when the question does not say which one it wants.
 
 **Three figures per model** are what a reader needs to tell the model from the engine: the
 model alone in one call with the same catalog text (`BIRD_FIXED_PROMPT=true`, no tools, no

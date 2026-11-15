@@ -117,6 +117,15 @@ Response `200`:
 - `certificate.crossCheck`, when present, carries the second derivation: `verdict`, a sentence
   in `detail`, and the two figures in `primary` and `alternative`. For a `GROUP BY` answer it
   also has `groups` (`compared`, `differing`, up to three `examples`).
+- `certificate.evidence` (since 1.29.0) says the same findings one dimension at a time
+  (`repeatedRows`, `secondDerivation`, `filterValues`, `period`, `filterCoverage`,
+  `zerosInAverage`, `metricDefinition`, `approval`, `businessGrain`,
+  `questionInterpretation`, `dataConventions`, and `statement` for who wrote the SQL). Every
+  dimension is always present with a `status`, and `notEstablished` lists in plain sentences
+  what no check established. Do not automate on `verdict` alone: `questionInterpretation` is
+  `not_verified` for every statement a model wrote, whatever the verdict
+  ([EVIDENCE.md](EVIDENCE.md)). The certificate returned by `POST /certify` carries it too,
+  with `statement.status` `caller`.
 - `certificate.repair`, when present, records that the checks flagged a first query and the
   model was asked once to correct it (`docs/CERTIFICATE.md`).
 - `answerHandle` is the signed ticket for the follow-up routes below; it expires after 15

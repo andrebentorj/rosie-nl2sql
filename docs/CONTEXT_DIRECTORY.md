@@ -175,6 +175,16 @@ meaning. Do NOT write "always call describe_table before every query" into your
 `system-prompt.txt`: that instruction alone costs one or two model round-trips per question.
 Richer fields improve both the summary and the `describe_table` tool output:
 
+- **table.entity** `{ "name": "card", "key": "name" }`: says that the thing your users ask
+  about is not one row of this table. A card printed in five sets is five rows and one
+  card; a customer registered twice is two rows and one customer. `key` is ONE column of the
+  table (not masked, not the primary key) whose value identifies the entity. The prompt then
+  tells the model what one card is, and the certificate counts, for a total, an average or
+  a count over this table, the rows against the distinct values of `key`: more rows than
+  entities and the answer is flagged with both counts and, where it can be computed, the
+  figure taking each entity once (`entity_grain`, `docs/CERTIFICATE.md`). Declare it only
+  where questions are usually about the entity: a question about each row ("how many
+  printings") is then flagged too, as the other of two readings.
 - **table.promptHidden** `true`: keeps a rarely asked table (audit shadows, technical logs)
   out of the detailed prompt block to save tokens on every request. The table is only named
   on an `OTHER TABLES` line; it stays fully queryable and visible to `list_tables` and
@@ -183,6 +193,9 @@ Richer fields improve both the summary and the `describe_table` tool output:
 - **table.synonyms** `["customers", "clients"]`: alternative names users say.
 - **column.description**: what the column means.
 - **column.synonyms**: alternative names for the column.
+- **column.additive** `false`: the column is not a quantity that sums across rows (a balance,
+  a rate, a percentage, a unit price). The prompt tells the model not to `SUM` it, and an
+  answer that does is flagged (`non_additive`). Leave it unset for ordinary amounts.
 - **column.measure** `true`: the column is a value of each record of its table (the total of
   an order, the amount of a payment), to be added once per record. It is what lets the Answer
   Certificate call a total that repeats those records wrong; without it (or a declared metric

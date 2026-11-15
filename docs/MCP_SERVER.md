@@ -94,6 +94,13 @@ identity at all: those tools would go to everyone holding the credential.
 
 ## What a client sees (protocol surface)
 
+- **Evidence, dimension by dimension.** `structuredContent.certificate.evidence` is declared
+  in the output schema of `ask_data`, `query_metric`, `run_approved_query` and `certify_sql`,
+  and the text block ends with a line starting `Not established:` that repeats
+  `evidence.notEstablished`, so a client that reads only text is told what was not checked.
+  An agent that acts on a figure should require `approval.status` `approved_query` or
+  `metricDefinition.status` `compiled_from_declaration`, and no dimension that is `found`,
+  `contradicted`, `failed` or `not_looked` (`docs/EVIDENCE.md`).
 - **Typed results.** Every tool declares an `outputSchema`, so `tools/list` tells a client
   exactly what `structuredContent` carries. For `ask_data` that includes the **Answer
   Certificate** as a typed object (`verdict` enum `CONTRADICTED | FLAGGED | CROSS_CHECKED |

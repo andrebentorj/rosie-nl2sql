@@ -38,11 +38,12 @@ that statement, the certificate reports both figures and marks the answer `CONTR
 
 ## Highlights
 
-- **It learns your database by itself.** One command reads the schema and writes the whole
-  context: the catalog, the columns to mask, the relationships the database does not
-  declare, descriptions, the assistant's instructions, and example queries it keeps only if
-  they run on your data. Then it reads how your data records a missing value, which no
-  schema says. [How Rosie learns your database](#how-rosie-learns-your-database).
+- **It starts from your schema, with no modeling.** One command reads the schema and writes
+  the whole context: the catalog, the columns to mask, the relationships the database does
+  not declare, descriptions, the assistant's instructions, and example queries it keeps only
+  if they run on your data. Other assistants read sample values too; what Rosie adds is
+  reading how your data records a MISSING value (a 0, a `-`, a code that lost its zeros),
+  which no schema says, as notes a person who knows the data confirms or corrects. [How Rosie learns your database](#how-rosie-learns-your-database).
 - **Every answer says what was checked.** After the SQL runs, deterministic checks look for
   the ways a query is wrong without an error, and the outcome is shown next to the number,
   with the evidence. A check that could not run is reported as not run.
@@ -61,8 +62,8 @@ that statement, the certificate reports both figures and marks the answer `CONTR
   [docs/APPROVED_QUERIES.md](docs/APPROVED_QUERIES.md), [docs/METRICS.md](docs/METRICS.md),
   [docs/OPERATIONS.md](docs/OPERATIONS.md).
 - **Measured in public, with what went wrong.** Three database engines, a public benchmark
-  we did not write, every question's result in the repository, and a rule for when a gain
-  may be claimed. [Measured, on public data](#measured-on-public-data).
+  we did not write, every question's result in the repository, how often answers were right
+  under each verdict, and a rule written beforehand for when a gain may be claimed. [Measured, on public data](#measured-on-public-data).
 - **Yours to run.** Your server, your database, your model key, any OpenAI-compatible
   endpoint including a model you host. [docs/DATA_PRIVACY.md](docs/DATA_PRIVACY.md).
 
@@ -123,17 +124,25 @@ values only with `--samples` ([docs/DATA_PRIVACY.md](docs/DATA_PRIVACY.md)).
 | Approach | What it does about a number that is wrong without an error |
 |---|---|
 | A model and a prompt | Nothing after the SQL runs. The answer looks the same right or wrong. |
-| A semantic layer (dbt Semantic Layer, Cube and similar) | Prevents it by construction for what has been modeled: a metric defined once cannot be inflated by a join. Someone has to model the data first, and a question outside the model is out of reach. |
-| Rosie | Starts from the schema, with no modeling. Checks each answer after it runs and shows what it found. For a metric you do declare, it writes the query itself, as a semantic layer does, and it imports definitions from dbt and Cube. |
+| An assistant that has a model look again (Databricks Genie "Inspect", ThoughtSpot "Double check response", and others) | A second pass by a model reviews the statement, sometimes with small queries of its own, and rewrites it. What it found is not shown as evidence, and a model reviewing a model can share its misreading. |
+| A badge for an approved answer (Snowflake verified queries, Genie trusted assets, Power BI verified answers) | Says a person approved that SQL beforehand. It says nothing about a question nobody approved. |
+| A semantic layer (dbt Semantic Layer, Cube, Looker and similar) | Prevents it by construction for what has been modeled: a metric defined once cannot be inflated by a join, and an entity can be declared apart from the key of its table. The model has to exist first (some tools now draft it from query history), and a question outside it is answered without the guarantee or not at all. |
+| A checker of SQL text (Sqlsure, veriSQL, open source) | Deterministic rules over the statement before it runs, against cardinalities you declare, with a "cannot verify" outcome. It does not ask the data. |
+| Rosie | Starts from the schema, with no modeling. After the statement runs, deterministic checks ask the data (the figure taken again with each record once, the filter value that does not exist, the period past the last record, the zeros inside an average) and the answer shows what they found and lists what nobody looked at. For a metric you do declare, it writes the query itself, as a semantic layer does, and it imports definitions from dbt and Cube. |
 
 The table is about one kind of error, a figure a join inflated, where Rosie is strong. Most
 wrong answers are of another kind: the wrong column, the wrong definition, a question read
 another way. A semantic layer prevents those for what has been modeled. Rosie prevents them
 only where you declare a metric or approve a query, and its checks do not see them.
 
-Rosie is not the only tool that deals with inflated totals: semantic layers prevent them
-where the metric is modeled. Its difference is that it checks after the fact, on questions
-nobody modeled, and shows the evidence. The limits are stated as plainly as the checks: the
+Rosie is not the only tool that deals with inflated totals, that looks at an answer again, or
+that checks SQL with fixed rules: the table names others that do each. What we did not find
+in any product a company can buy or host (checked on 2026-11-15, from each vendor's own
+documentation) is the three together: checks that are deterministic and run against the
+data after the statement, shown with their evidence on each answer; a stated list of what
+was not established; and how often answers were right under each verdict, published with
+every measurement. Semantic layers handle double counting more broadly than Rosie does, for
+what is modeled. The limits are stated as plainly as the checks: the
 certificate looks at the structure of the calculation, not at whether the question was
 understood, and a passed check does not mean the answer is right
 ([docs/CERTIFICATE.md](docs/CERTIFICATE.md)).
@@ -311,6 +320,7 @@ directory. The contract is in [contexts/example/README.md](docs/CONTEXT_DIRECTOR
 |---|---|
 | Install it | [docs/INSTALL.md](docs/INSTALL.md) |
 | What the widget shows, and what the character does | [docs/WIDGET.md](docs/WIDGET.md) |
+| The certificate as a list of evidence, for integrators and agents | [docs/EVIDENCE.md](docs/EVIDENCE.md) |
 | See how accurate it is, and reproduce the numbers | [docs/BENCHMARK.md](docs/BENCHMARK.md) |
 | Choose a model, and see how much accuracy it buys | [docs/MODELS.md](docs/MODELS.md) |
 | Know exactly what the Answer Certificate checks | [docs/CERTIFICATE.md](docs/CERTIFICATE.md) |

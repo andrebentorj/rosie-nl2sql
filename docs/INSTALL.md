@@ -312,7 +312,7 @@ existing catalog, it merges. What it keeps from the previous file:
 - on a column: `description`, `synonyms`, `enumValues`, and since 1.24.0 `measure`,
   `profile` and `profileNote`;
 - on a table: `description`, `synonyms`, `domain`, `tags`, `maskedColumns`, and since 1.24.0
-  `promptHidden`, and a `primaryKey` written by hand when the database declares none, as
+  `promptHidden`, `entity`, and a `primaryKey` written by hand when the database declares none, as
   long as every column it names is still there;
 - since 1.24.0, relationships written by hand or imported (`npm run import-semantic`) that
   the database does not declare as foreign keys, as long as both ends still exist;
