@@ -44,7 +44,7 @@ nothing is sent to the vendor of Rosie, and there is no licence server to call.
 |---|---|
 | Can Rosie change data? | No. Statements are parsed and only a single `SELECT` passes. The connection uses a database user that has `SELECT` and nothing else, and Rosie checks that user's privileges at startup and every 15 minutes. If it finds more than `SELECT`, every question is refused until it is fixed |
 | Which tables and columns can it read? | Only those in the catalog file. A statement that names anything else is rejected before it runs. Leaving a table out of the catalog keeps it out of reach |
-| How is personal data protected? | Columns listed in `masked-columns.json` cannot be selected, filtered on, sampled or looked up, and are not described to the model. Since 1.24.0 that holds for every path: before it, the `describe_table` tool returned the name, type and description of a masked column to the model when the model asked for the table (never a value) |
+| How is personal data protected? | Columns listed in `masked-columns.json` cannot be selected, filtered on, sampled or looked up, and are not described to the model. Since 1.24.0 that holds for every path: before it, the `describe_table` tool returned the name, type and description of a masked column to the model when the model asked for the table (never a value). Two further paths were closed in 1.26.0, see "Corrections" below |
 | Can a user see another tenant's rows? | Not with [row policies](ROW_POLICIES.md): a filter derived from the caller's verified identity is added to every read, including approved queries and compiled metrics |
 | What stops a runaway query? | A statement timeout enforced on the connection (default 10 s), a cap of 500 rows per answer, at most 5 queries per question, and a response size limit |
 | What about SQL injection? | The user never supplies SQL; a question that starts with a SQL statement is refused. The model's SQL is treated as untrusted input: parsed to a syntax tree, checked against the allowlist, with set operations (all but `UNION ALL` inside a derived table, where each branch is validated on its own and filtered by the row policies), system schemas, file access, session variables and information functions rejected. Values in approved queries are typed and bound, never concatenated |
@@ -142,6 +142,19 @@ verified.
 
 Report privately to the vendor contact in your agreement. A confirmed finding in the
 validator is fixed together with a regression case in the security suite. See `SECURITY.md`.
+
+## Corrections
+
+Defects in what this page promises, with the version that closed them. All were found by
+independent reviews of the source, none from a report of use.
+
+| Closed in | What was wrong | Who could reach it | What to check if you ran it |
+|---|---|---|---|
+| 1.26.0 | `JOIN ... USING (column)` on a masked column passed the validator (MySQL and PostgreSQL; SQL Server has no `USING`). A statement joining a table to a derived table that renames another column to the masked name returned the masked values that matched, to the caller and to the model provider | A statement written by the model (so a user able to steer it past the question filters), and directly, with no model, `POST /certify` and the MCP tool `certify_sql` when `ROSIE_CERTIFY_SQL=true` | Search `rosie_audit_log.sql_generated` for `USING (` followed by the name of a masked column |
+| 1.26.0 | When a table carried a `maskedColumns` list of its own in `schema-catalog.json`, the columns listed for that table in `masked-columns.json` (and in the catalog's root `maskedColumns`) were ignored: they were named in the prompt and could be queried | Any question, in a context that masks the same table in two places. A context that uses only `masked-columns.json`, which is what `npm run init` writes, was not affected | Whether any table of your `schema-catalog.json` has its own `maskedColumns` |
+| 1.26.0 | A relationship that ends on a masked column, and a masked primary key, were named to the model (names, never values) | Any question | Nothing to check |
+| 1.26.0 | `/explain` and the MCP tool `explain_answer` sent the statement of an earlier answer to the provider without validating it again, so a column masked after the answer could still be named for up to 15 minutes | A caller holding an answer handle signed before the change | Nothing to check |
+| 1.24.0 | `describe_table` returned the name, type and description of a masked column | Any question | Nothing to check |
 
 ## Not built, stated plainly
 

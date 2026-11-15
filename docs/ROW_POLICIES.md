@@ -77,7 +77,9 @@ Numbers are written as numbers and booleans as booleans. A list is accepted only
   to tables that no user of Rosie may read.
 - **Not column security.** Use `masked-columns.json` for that.
 - **Not applied to the catalog.** Table and column names, descriptions and enum codes are
-  the same for every caller.
+  the same for every caller. So are the notes of the column profile
+  (`npm run profile-columns`), which are read from every row of a table: a note such as
+  "'-' in 40 rows" is a fact about all tenants' rows, shown to each of them.
 
 ## Proof
 

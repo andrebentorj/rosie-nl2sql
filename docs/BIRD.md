@@ -534,6 +534,53 @@ The fifteen passes are in `docs/benchmark-runs`, named
 row of the second table is
 `npm run bird:compare -- --a docs/benchmark-runs/bird-pass-terra-plain-1-1.24.0.json,docs/benchmark-runs/bird-pass-terra-plain-2-1.24.0.json,docs/benchmark-runs/bird-pass-terra-plain-3-1.24.0.json --b docs/benchmark-runs/bird-pass-terra-profile-1-1.24.0.json,docs/benchmark-runs/bird-pass-terra-profile-2-1.24.0.json,docs/benchmark-runs/bird-pass-terra-profile-3-1.24.0.json`.
 
+### What a cross-checked wrong answer was, and the check that came of it
+
+`gpt-6-luna` with the engine alone got a `CROSS_CHECKED` verdict on 26 different questions
+across its three passes, and on 22 of them at least one such answer was wrong. We read the
+22 (2026-11-15, question, reference statement and engine statement side by side). In every
+one the verdict said something true: the total or average was computed without repeated
+rows. What was wrong was something else.
+
+| What was wrong | Questions |
+|---|---|
+| An average that counts rows where 0 stands for "not recorded" (the question says "known", "measured" or "recorded", the statement says `IS NOT NULL`) | 10, all in superhero: 343, 345, 348, 355, 356, 357, 363, 369, 370, 371 |
+| Another reading of the question, each its own: one card per printing instead of one per name (110), a place matched too narrowly (144), a value "in force on" a date read as "recorded on" it (176), points taken from another table (247), drivers with no rows left out instead of shown as 0 (266), all expenses of the day instead of one person's (318), only the budget lines holding the expense instead of every line of the event (322), an item list kept as one text (327), an extra column or another label (165, 220, 239), a filter by exclusion where the reference lists the values (175) | 12 |
+
+The second row is what the certificate does not look at and says it does not: whether the
+statement answers the question. The first row is a fact about the DATA, and the data can be
+asked. Since 1.26.0 the certificate has a check for it (`zero_values`,
+`docs/CERTIFICATE.md`): one probe over the rows the answer averaged counts the zeros and
+finds the smallest value above 0, and when there are zeros followed by a gap the answer is
+`FLAGGED`, with the count and the average without them.
+
+Run again, with no model, over the final statement of every answer of the fifteen passes
+(7,500 answers less those with no statement):
+
+| Configuration | Answers it flags, per pass | Of them wrong | Of them `CROSS_CHECKED` before |
+|---|---|---|---|
+| `gpt-6-luna`, the engine | 14, 13, 14 | all | 8, 8, 8 (of 15, 15 and 18 cross-checked wrong answers) |
+| `gpt-6-luna`, with the profile | 0, 1, 1 | all | 0, 0, 1 |
+| `gpt-6-luna`, with the profile and the two-figure question | 1, 1, 0 | all | 1, 1, 0 |
+| `gpt-6.1-terra`, the engine | 4, 4, 4 | all | 1, 2, 2 (of 1, 2 and 2) |
+| `gpt-6.1-terra`, with the profile | 0, 0, 0 | | |
+
+- **57 answers flagged, all 57 wrong, none of the right answers flagged.** A first version
+  flagged 10 right answers on two questions: averages written as `AVG(x) FILTER (WHERE x <> 0)`,
+  which had already left the zeros out. That form is now skipped, and the figures above are
+  after the correction.
+- **It is one database of the eleven.** Every one of the 57 is in superhero, where height
+  and weight hold 0 for "not recorded". On the other ten the check said nothing, right or
+  wrong. So this measures that it is quiet where it has nothing to say and catches the one
+  pattern it was written for, on the data that showed us the pattern. It is not evidence of
+  how often other data has it.
+- **It was written after reading these answers**, so it is fitted to them in the same way
+  the column profile is. With the profile on, the model mostly avoids the error and the
+  check has little left to catch; they are two answers to the same fact, one before the
+  statement is written and one after.
+- **The second attempt for it was not measured.** With `AI_CERTIFICATE_REPAIR_UNDECLARED`
+  the flag goes back to the model as a question; no pass has been run with that.
+
 **Three figures per model** are what a reader needs to tell the model from the engine: the
 model alone in one call with the same catalog text (`BIRD_FIXED_PROMPT=true`, no tools, no
 second look, no certificate), the engine, and the engine with the profile of the data.

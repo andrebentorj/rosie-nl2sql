@@ -279,7 +279,7 @@ Question
    ├─ row policy ─ every table reference filtered by the caller's verified identity
    ├─ read-only pool ── statement timeout · SELECT-only user
    │
-   └─ Answer Certificate ── fan-out · empty filter · period coverage · no-op filter · metric
+   └─ Answer Certificate ── fan-out · empty filter · period coverage · no-op filter · zeros in an average · metric
                             definition · independent re-derivation
 ```
 

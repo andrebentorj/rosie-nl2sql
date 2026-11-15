@@ -165,6 +165,9 @@ privilege beyond SELECT, the **server stays up but `/ask`, `/export`, `/explain`
 ```sql
 CREATE USER 'rosie_readonly'@'%' IDENTIFIED BY '<strong password>';
 GRANT SELECT ON <my_schema>.* TO 'rosie_readonly'@'%';
+-- Stronger, for tables that hold personal data: grant the columns Rosie may read and leave
+-- the masked ones out, so the database refuses them whatever Rosie does.
+-- GRANT SELECT (id, name, country) ON <my_schema>.customer TO 'rosie_readonly'@'%';
 -- Grant nothing beyond SELECT.
 FLUSH PRIVILEGES;
 ```

@@ -437,7 +437,7 @@ other page explains. All are read at startup; changing one needs a restart.
 | `AI_ANSWER_CHECKS` | `true` | The Answer Certificate. `false` turns every check off |
 | `AI_CROSS_CHECK` | `true` | The second derivation ([CERTIFICATE.md](CERTIFICATE.md)) |
 | `AI_CERTIFICATE_REPAIR` | `true` | One second attempt by the model when the checks name a structural defect |
-| `AI_CERTIFICATE_REPAIR_UNDECLARED` | `false` | The same second attempt where the context declares nothing about the column |
+| `AI_CERTIFICATE_REPAIR_UNDECLARED` | `false` | The same second attempt where the context declares nothing about the column, and for an average that counts zeros that may stand for "not recorded" |
 | `AI_QUESTION_REVIEW` | `false` | A model reads the question against the final statement and returns an opinion (`questionReview`). One more model call per answer |
 | `AI_QUESTION_REVIEW_MODEL` | `AI_MODEL` | The model that reviews. A stronger one than `AI_MODEL` is the point |
 | `AI_QUESTION_REVIEW_REPAIR` | `true` | With the review on, one second attempt when the review says the statement does not answer the question |

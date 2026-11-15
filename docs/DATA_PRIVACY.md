@@ -35,7 +35,9 @@ Results are sent because the model writes the plain-language answer from them. S
 model provider your schema: table and column names, types, keys and relationships. With
 `--samples` it also sends sample values of unmasked columns, which gives better
 descriptions and enum codes; that is off by default. The columns it masks are left out of
-the samples. It runs once, at install time, with the key in `OPENAI_API_KEY`.
+the samples. To write the test questions that must be refused, it also sends the provider
+the NAMES of the columns it has just masked (never a value). It runs once, at install time,
+with the key in `OPENAI_API_KEY`.
 
 ## Never sent
 
@@ -43,8 +45,18 @@ the samples. It runs once, at install time, with the key in `OPENAI_API_KEY`.
   refused by the SQL validator, left out of `sample_rows` and refused by `lookup_values`.
   Their values never reach the provider. Since 1.24.0 their names do not either: before
   that version the `describe_table` tool returned the name, type and description of a
-  masked column when the model asked for its table. Masking is the control for personal
-  data: list every column that holds it. `npm run generate-catalog` prints the column names
+  masked column when the model asked for its table. Two more paths were closed in 1.26.0,
+  both found by independent reviews: a `JOIN ... USING (column)` on a masked column passed
+  the validator in MySQL and PostgreSQL, which let a crafted statement compare a masked
+  column and read its values back; and when a table listed `maskedColumns` of its own in the
+  catalog, the columns listed for it in `masked-columns.json` were ignored. If you ran an
+  earlier version with masked columns, see "Corrections" in
+  [SECURITY_OVERVIEW.md](SECURITY_OVERVIEW.md). Since 1.26.0 a relationship that ends on a
+  masked column and a masked primary key are not named to the model either, and an
+  explanation of an earlier answer is refused when its statement is no longer allowed.
+  Masking is the control for personal data: list every column that holds it, and take the
+  `SELECT` privilege on those columns away from the read-only user where your database
+  allows it ([INSTALL.md](INSTALL.md)), so that the mask does not rest on Rosie alone. `npm run generate-catalog` prints the column names
   that look like personal data and are not masked.
 - **Rows outside the caller's policy.** With [row policies](ROW_POLICIES.md), every read is
   filtered by the caller's verified identity before it runs, so the sample sent to the

@@ -66,6 +66,7 @@ The names changed in version 1.0.1: `VERIFIED` became `CROSS_CHECKED`, `UNVERIFI
 | `empty` | A filter on a value that does not exist (`City = 'Oporto'` when the data says `Porto`), and lists the real values | The result is empty or zero and the statement filters by equality or a pattern | Only the first eligible filter is probed |
 | `coverage` | A filter that keeps every row, so probably is not filtering what was meant | The statement has a `WHERE` | A filter that legitimately keeps everything is still reported (about 5% of correct answers in our benchmark) |
 | `period` | A date range that runs past the last record, or a "last N months" question answered over an old fixed range | The statement bounds a date column | Gaps inside the range; several date columns |
+| `zero_values` | An average that counts rows holding 0 where 0 may stand for "not recorded": it gives how many such rows there are, the smallest other value and the average without them | `AVG` of a plain numeric column of a catalog table in the outer `SELECT`, when the rows averaged hold zeros and the smallest value above 0 is 2 or more | A 0 that is a real zero in such a column is still reported (the line says "may"). Not looked at: totals, counts, minimums, an average inside a subquery or over an expression, `AVG(x) FILTER (...)`, other placeholders (`-1`, `9999`, `'N/A'`) |
 | `metric` | A question that names a declared metric, answered with a different expression, table or filter | The context declares metrics (`docs/METRICS.md`) | It compares the parts of the definition with the statement; it does not prove the final expression is the metric |
 
 ### The second derivation (`crossCheck`)
@@ -159,6 +160,14 @@ not write, a small model's answer carrying that difference was wrong in 44 cases
 three runs, and a strong model's in 1 of 7 (`docs/BIRD.md`). In the one run made with this
 switch on, 13 answers of the small model still carried the difference afterwards: 9 wrong
 and 4 right. That run did not record how often the second answer replaced the first.
+
+The same setting sends back an average that counts zeros (`zero_values`), also as a question
+("the average counts 23 of 100 rows where weight is 0 and the smallest other value is 14;
+without them it is 91.5: do those rows belong in it?"). The second answer is accepted only
+when it returns the average without those rows, or that figure rounded, and keeps every
+filter of the first; the one filter it may drop is the `IS NOT NULL` on that column. A
+grouped average holds no single figure to reach and is not sent back. This path has unit
+tests and has not been measured with a model.
 
 ## When a check does not run
 
