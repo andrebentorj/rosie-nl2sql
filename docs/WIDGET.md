@@ -8,19 +8,28 @@ change to it can be judged against the intent. Installing it is in
 ## An answer is a card, read from the top
 
 1. **The verdict**, in words and with an icon, before any number: `No repeated rows`,
-   `Checks passed`, `Approved query`, `Read with care`, `Checks failed`, `Contradicted`,
-   `Not checked`, `No answer`. An answer the certificate has nothing to say about
-   (`NOT_APPLICABLE`, or no certificate) has no verdict row at all.
-2. **The figure.** One number for a one-value answer; "N rows" for a table; a short list of
-   label and value for one row of several columns. When the certificate contradicts an
+   `Checks passed`, `Approved query`, `Declared metric`, `Read with care`, `Checks failed`,
+   `Contradicted`, `Not checked`, `No answer`. An answer the certificate has nothing to say
+   about (`NOT_APPLICABLE`, or no certificate) has no verdict row at all, unless it ran an
+   approved query, which is always named.
+2. **The figure.** One value for a one-value answer; "N rows" for a table; a short list of
+   label and value for one row of several columns. A value that is not a number (a name, a
+   date, `true`, `false`) is the figure too, as it came and a size smaller; a missing value
+   is written `null` and an empty text `(empty text)`, both faint, so that `false`, nothing
+   and no value read three different ways. When the certificate contradicts an
    answer that is a single value (one row, one column, no groups in the certificate), both
    values are shown, the returned one struck through, each with the route the engine took,
    word for word. On a grouped answer the two values belong to one group: the figure stays
    "N rows", or the one row is shown whole, the group beside its value, when a filter left a
    single group, and the evidence line says which group.
 3. **What the model said.** Under a contradicted figure it is shown faint and without bold.
+   When the response carries `narrativeReplaced` (the model's sentence did not carry the
+   figure of the result and the engine put its own in its place), the sentence is drawn as a
+   caution, in the amber band of a second reading that disagrees: it is a warning, not
+   ordinary prose.
 4. **The evidence**: the certificate's sentences, the engine's own words. What passed is
-   written on the line, not in a tooltip. A second derivation that agreed is said whatever
+   written on the line, not in a tooltip, as plain text under a hairline with no band
+   behind it; a band is for what was flagged, what was not checked, and who approved. A second derivation that agreed is said whatever
    the verdict is, so an answer that is `Not checked` for another reason shows both facts.
    When the question review is on (`AI_QUESTION_REVIEW`), its reading is a separate line
    marked as an opinion, outside the certificate, and it never changes the verdict. A
@@ -32,7 +41,31 @@ change to it can be judged against the intent. Installing it is in
    the ones that arrived**, with no separator and no added zero (`20848.62`, not
    `20,848.62`): a code pasted into another system must be the code.
 
-`CROSS_CHECKED` is shown as **No repeated rows**, with the tone and the tick of
+## A certificate that raised nothing is not painted as a right answer
+
+| The answer | Card | Icon | Evidence |
+|---|---|---|---|
+| `CHECKS_PASSED`, `CROSS_CHECKED` | plain (`data-tone="plain"`): grey edge, grey words | a small grey tick | plain text, no band |
+| `NOT_CHECKED` | mute: grey edge, grey words | a dashed circle | a grey band that starts "Not checked." |
+| an approved query or a declared metric whose certificate raised nothing | green (`data-tone="ok"`) | a person, or a tick for a metric | the approval or the metric in a green band, the checks in plain text |
+| an approved query with no certificate (the checks are off), or with a check skipped | plain, named `Approved query` | a person | the approval in its blue band |
+
+- **Green is for one case only**: the answer ran an approved query or a declared metric
+  compiled by the engine, and its certificate is `CHECKS_PASSED`, `CROSS_CHECKED` or
+  `NOT_APPLICABLE` with every assertion a pass, nothing skipped and no second count that
+  differs. A person defined what that number means and the checks found nothing against it.
+  With no certificate at all nobody looked, so the card is plain and the approval line is
+  still shown.
+- **Why.** Checks that pass say that nothing known to be wrong was found, not that the
+  answer is the right one. Counted on a benchmark ([BIRD.md](BIRD.md), "Right answers by
+  verdict"), `CHECKS_PASSED` answers were right 62% to 89% of the time and `CROSS_CHECKED`
+  16% to 99%, with the model. A green card and a green tick on the character said more
+  than that.
+- **`Not checked` must keep reading as "nobody looked"**, so it is not the same card: its
+  own icon and words, a grey band, and the character with half-closed eyes and a question
+  mark. A passed check has none of the three.
+
+`CROSS_CHECKED` is shown as **No repeated rows**, with the plain tone and the tick of
 `Checks passed`. Its line says what was established and what was not: "The figure is the
 same when each record is taken once. Whether this is the right question was not checked.",
 followed by the engine's sentence. The verdict code in the API is unchanged. It was renamed
@@ -53,8 +86,9 @@ an answer and has no such line.
 | The last answer | Face | Badge |
 |---|---|---|
 | none yet, a clarification, no verdict | at rest | the green status light |
+| `CHECKS_PASSED`, `CROSS_CHECKED` | at rest | the status light, no badge |
 | question sent | three dots where the eyes are | the status light |
-| `CHECKS_PASSED`, `CROSS_CHECKED` (the same as it), an approved query | at rest | green, a tick |
+| an approved query or a declared metric whose certificate raised nothing | at rest | green, a tick |
 | `FLAGGED` by a warning | one eyelid lower than the other, flat mouth | amber, an exclamation mark |
 | `NOT_CHECKED` | both eyelids half down, flat mouth | grey, a question mark |
 | `CONTRADICTED`, or `FLAGGED` by a failed check | worried eyelids, mouth down | red, a cross |
@@ -63,10 +97,14 @@ an answer and has no such line.
 
 - **She is glad for a second and a half, and only for an approved query or a declared
   metric compiled by the engine that raised nothing**: the two answers where a person
-  defined what the number means. Not for an answer that merely passed, not for
+  defined what the number means, under the rule for green above (a certificate that ran,
+  nothing flagged, nothing skipped). Not for an answer that merely passed, not for
   `CROSS_CHECKED` (a second derivation does not know the question), never beside a figure
-  the certificate questions (`CONTRADICTED`, `FLAGGED`, `NOT_CHECKED`, no answer), and not
-  when the question review says the question was another one.
+  the certificate questions (`CONTRADICTED`, `FLAGGED`, `NOT_CHECKED`, no answer), not when
+  there is no certificate, and not when the question review says the question was another
+  one (the card and the badge stay as they were, only the gladness stops).
+- **The green tick badge goes with the green card and with nothing else.** An answer that
+  merely passed leaves her exactly as she is at rest.
 - **The state stays until the next question or a new conversation.** No timer takes her back
   to rest, so the badge is still there when the panel is closed.
 - **At rest she is the drawing she has always been**, with the same float, breathing and
@@ -84,7 +122,8 @@ an answer and has no such line.
   answer's card. Closing it returns the focus to that button.
 - The launcher is hidden while it is open. Focus lands on the title.
 - A caveat is a banner above the table (`.rosie-results-verdict`). What speaks for the figure
-  is there too, more quietly (`.rosie-results-evidence`), and so is the second reading of
+  is there too, more quietly (`.rosie-results-evidence`, grey for checks that passed, blue
+  for an approval), and so is the second reading of
   the question when the card has one (`.rosie-results-review`, amber when it disagrees): a
   table opens before the card is read, so it carries the same evidence as the card.
 - **Numbers** follow the rule in the next section, the same on the card, in the table and in

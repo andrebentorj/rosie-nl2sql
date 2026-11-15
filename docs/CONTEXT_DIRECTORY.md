@@ -110,7 +110,7 @@ Also available: `surface`, `surfaceAlt`, `surfaceDim`, `ink`, `inkSoft`, `inkFai
 `border`, `borderSoft`. A key that is set overrides the widget's automatic dark-mode
 value for that key (explicit beats auto).
 
-How the theme is applied (widget 2026.11.10):
+How the theme is applied (widget 2026.11.11):
 
 - **A theme that names `surface` decides light or dark for the whole widget.** The keys it
   does not name (inks, borders, the colours of the verdicts) follow that surface and not the

@@ -602,8 +602,10 @@ the benchmark, of the answers with that verdict, three passes added together):
   exposed to a zero that stands for "not recorded", which no check looked at until 1.26.0.
   Two independent reviews read the 48 wrong ones: none was a repeated row.
 - **What changed because of this table.** Since 1.27.0 the widget shows a `CROSS_CHECKED`
-  answer in the same neutral way as `CHECKS_PASSED`, under the words "No repeated rows", and
-  the character no longer reacts to it as to a confirmed answer (`docs/WIDGET.md`). The
+  answer under the words "No repeated rows", and since 1.28.0 both it and `CHECKS_PASSED`
+  are drawn in grey with the character at rest: green, the tick badge and the character's
+  reaction are kept for an answer that ran an approved query or a declared metric and
+  raised nothing, the two cases where a person defined the meaning (`docs/WIDGET.md`). The
   verdict code is unchanged. This table is to be published with every measurement: the
   verdict that looks best must not have a rate below the others.
 
