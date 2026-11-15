@@ -48,24 +48,26 @@ Read these numbers as a comparison between models, not as accuracy you will get:
 
 ## Measured on all 500 questions
 
-BIRD Mini-Dev, 2026 update, PostgreSQL, context built from the schema alone. Every figure is
-a single pass, and two passes of the same model differ on 101 to 120 of the 500 questions,
-so read differences of a few points as nothing. Method, caveats and the per-question files
-are in `docs/BIRD.md`.
+BIRD Mini-Dev, 2026 update, PostgreSQL, context built from the schema alone. The first row
+is a single pass; the other three are three passes each on engine 1.24.0 (2026-11-14 and
+15), compared question by question. Method, caveats and the per-question files are in
+`docs/BIRD.md`.
 
 | | `gpt-6-luna` | `gpt-6.1-terra` |
 |---|---|---|
 | The model alone: one call, the same catalog text, no tools, no checks (engine 1.23.2) | 215 (43.0%) | 381 (76.2%) |
-| The engine | 272, 281 and 272 (54.4%, 56.2%, 54.4%) | 429 (85.8%), engine 1.10.0 |
-| The engine with the profile of the data and the two-figure question (engine 1.23.0) | 329 (65.8%) | 437 (87.4%) |
+| The engine | 273, 278, 263 (mean 54.3%) | 430, 431, 425 (mean 85.7%) |
+| The engine with the profile of the data | 319, 310, 330 (mean 63.9%) | 445, 439, 446 (mean 88.7%) |
+| The same with the two-figure question | 339, 331, 326 (mean 66.4%) | not run |
 
-- The three engine runs of `gpt-6-luna` are not one configuration (the first run, the first
-  statements of the run with the question review, and a run with the benchmark's column
-  descriptions).
-- 329 against the earlier `gpt-6-luna` runs is a gain by the question-by-question test of
-  `docs/BIRD.md` (141 questions ahead, 72 behind, p 0.000003). It mixes two changes that
-  were not measured apart, and both were developed on this same benchmark.
-- 437 against 429 is not told apart from chance (38 questions ahead, 30 behind, p 0.40).
+- **The profile is a gain for both models** by the question-by-question test of
+  `docs/BIRD.md`: 142 questions ahead and 72 behind for `gpt-6-luna` (p 0.000002), 53 and 33
+  for `gpt-6.1-terra` (p 0.040). For the stronger model nearly all of it is in data that
+  records a missing value as a value (one database of the eleven carries the result), and
+  the profile was developed on this same benchmark.
+- **The two-figure question adds about 12 answers for `gpt-6-luna`** (98 ahead, 67 behind,
+  p 0.019). It was not run with `gpt-6.1-terra`.
+- The earlier single runs (329 and 437 on engine 1.23.0) are replaced by these.
 - The first row is our own prompt, not the benchmark's baseline. By the same test the engine
   is ahead of the model alone for both models: 101 questions ahead and 44 behind for
   `gpt-6-luna`, 68 and 20 for `gpt-6.1-terra` (p under 0.00001 for each). They are single
@@ -79,12 +81,15 @@ are in `docs/BIRD.md`.
 
 - **Pilot and production where a wrong number costs something:** `gpt-6.1-terra`. On the
   sample it matches the strongest model measured at less than half the price and is faster,
-  and on all 500 questions it is 31 points above the default in one pass each, at about
-  US$ 0.011 per question against about US$ 0.002.
+  and on all 500 questions it is 31 points above the default (three passes each), at about
+  US$ 0.011 per question against about US$ 0.002. Run `npm run profile-columns -- --write`
+  for it as well: it gained about 15 answers of 500 with the profile, nearly all of them
+  where the data records a missing value as a value.
 - **High volume, simple questions, cost-sensitive:** `gpt-6-luna`. It asks for clarification
   more readily and costs between a fifth and an eighth, depending on the questions. Run
-  `npm run profile-columns -- --write` for it: the profile of the data is the one change
-  measured to help this model (`docs/BIRD.md`).
+  `npm run profile-columns -- --write` for it: the profile of the data is the largest gain
+  measured for this model, about 48 answers of 500. `AI_CERTIFICATE_REPAIR_UNDECLARED=true`
+  added about 12 more on the same benchmark; it is off by default (`docs/BIRD.md`).
 - **Data that must not leave the network:** a model you host behind an OpenAI-compatible
   endpoint (`docs/DATA_PRIVACY.md`). Measure it with your own question bank first.
 

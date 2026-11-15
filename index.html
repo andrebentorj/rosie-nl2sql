@@ -171,16 +171,16 @@ footer { border-top: 1px solid var(--line); padding: 28px 0 44px; color: var(--m
     </table>
     </div>
     <p class="note">We wrote that suite, so we also ran one we did not write. On BIRD Mini-Dev (2026
-    update: 500 public questions, 11 databases, context built from the schema alone) Rosie scored 54.4%
-    execution accuracy with the default model, in one pass. The dataset lists 51.8% for the same model
+    update: 500 public questions, 11 databases, context built from the schema alone) Rosie scored 54.3%
+    execution accuracy with the default model, the mean of three passes. The dataset lists 51.8% for the same model
     with a fixed prompt: the same range, not a lead. On that benchmark almost all errors are sound
     calculations of something other than what was asked, which the certificate does not catch: it
-    flagged 10 of 214 wrong answers.</p>
-    <p class="note">With a profile of each column read from the data, together with a question back to
-    the model when a total has two readings, the same model scored 65.8% in one pass, on the benchmark
-    those two changes were developed on, and they were not measured apart. Accuracy follows the model
-    first: a stronger model scored 85.8% without them and 87.4% with them, one pass each, a difference
-    that chance gives four times in ten. Every result, the misses and the commands to rerun them are in
+    flagged 10 of 214 wrong answers in the first run.</p>
+    <p class="note">With a profile of each column read from the data, the same model scored 63.9%, and
+    a stronger model went from 85.7% to 88.7%: three passes of each, compared question by question, and
+    a difference beyond chance for both. The profile was developed on this benchmark, and for the
+    stronger model nearly all of the gain is in one of the eleven databases. Accuracy follows the model
+    first. Every result, the misses and the commands to rerun them are in
     the documentation.</p>
 </section>
 

@@ -224,6 +224,10 @@ Both columns are the runs with the question review on. What it says:
 
 ## With a profile of the data: 329 of 500
 
+> Measured again since, with three passes a side and one change at a time: see "The first
+> campaign under the rule" below. This section is the single run that came first, kept as
+> it was reported.
+
 The review quoted above proposed a remedy and a figure to test it against: give the model a
 profile of each column, read from the data, and a small model should reach 60% to 63%;
 under 58% and the diagnosis was wrong. The bar was fixed before the run.
@@ -285,6 +289,10 @@ Every question is in `docs/benchmark-runs/bird-column-profile-1.23.0.json`. To r
 `BIRD_PROFILE=true AI_CERTIFICATE_REPAIR_UNDECLARED=true node -r dotenv/config test/bird/run.js`.
 
 ### The same with the stronger model: 437 of 500, and not a proven gain
+
+> On this run alone that was the reading. Three passes a side on engine 1.24.0 have since
+> told the two apart (53 questions ahead, 33 behind, p 0.040): see "The first campaign under
+> the rule" below.
 
 `gpt-6.1-terra`, same configuration, 2026-11-13, one pass. The bar was fixed before the run:
 434 or more and the profile helps this model too, 424 to 433 is what one pass varies, under
@@ -462,22 +470,85 @@ once (the profile and the two-figure question). The tool can only say the last w
 reports carry their configuration, which the reports in `docs/benchmark-runs` do. The
 `gpt-6.1-terra` sides also differ in engine version (1.10.0 against 1.23.0).
 
+### The first campaign under the rule: engine 1.24.0, three passes a side
+
+2026-11-14 and 15, engine 1.24.0, the 500 questions, PostgreSQL. Five configurations, three
+passes each, and three comparisons, each between two sides that differ in one thing. The
+configurations, the comparisons and what each outcome would be reported as were written
+before the first pass; no other comparison from these passes is reported as a result.
+
+| Configuration | `gpt-6-luna` | `gpt-6.1-terra` |
+|---|---|---|
+| The engine | 273, 278, 263 (mean 271.3) | 430, 431, 425 (mean 428.7) |
+| With the column profile (`BIRD_PROFILE=true`) | 319, 310, 330 (mean 319.7) | 445, 439, 446 (mean 443.3) |
+| With the profile and the two-figure question (`AI_CERTIFICATE_REPAIR_UNDECLARED=true`) | 339, 331, 326 (mean 332.0) | not run |
+
+| Comparison | Ahead / behind | p | Reading |
+|---|---|---|---|
+| `gpt-6-luna`, the profile against the engine | 142 / 72 | 0.000002 | a gain |
+| `gpt-6-luna`, the two-figure question added to the profile | 98 / 67 | 0.019 | a gain |
+| `gpt-6.1-terra`, the profile against the engine | 53 / 33 | 0.040 | a gain |
+
+How to read it.
+
+- **The profile is a gain for both models**, about 48 answers of 500 for the small one and
+  about 15 for the stronger one. This replaces the two single runs above: the 329 of
+  `gpt-6-luna` mixed two changes, and the 437 of `gpt-6.1-terra` was not told apart from
+  chance.
+- **Most of it is one kind of data.** For `gpt-6-luna` the superhero database goes from 13.0
+  to 37.7 right of 50 (31 questions ahead, 4 behind); formula_1 and financial follow (20 / 7
+  and 17 / 3). For `gpt-6.1-terra` superhero goes from 38.3 to 47.0 (12 / 1) and
+  california_schools from 37.7 to 40.7 (12 / 7), and that is most of the balance; on five of
+  the eleven databases the profile is level or slightly behind. Take away superhero and the
+  stronger model's result is 41 ahead and 32 behind, which is not a gain by this rule. So
+  the claim for that model is: it helps where the data records a missing value as a value,
+  and it was not seen to cost anything elsewhere.
+- **The two-figure question is a gain for the small model, and a small one.** About 12
+  answers of 500. In the three passes it was put 14, 16 and 12 times; the second statement
+  replaced the first 10, 12 and 9 times, and was then right 9, 11 and 9 times. It was not
+  run with the stronger model, so nothing is claimed there. It stays off by default: it
+  changes an answer on the strength of a second model call, and the measurement is on one
+  benchmark.
+- **p of 0.040 and 0.019 are under the line, not far under it.** Three comparisons were
+  made, and with three the chance of one false "gain" at this line is larger than one in
+  twenty. The first row would stand under any correction; the other two would not stand
+  under the strictest one.
+- **It is still the benchmark the profile was developed on.** Three passes settle whether
+  the difference is chance. They do not settle whether it carries to other data.
+- **Between passes of one configuration** the totals moved by up to 15 (`gpt-6-luna`, the
+  engine) and 20 (with the profile), and 130 to 146 of the 500 questions changed outcome
+  across the three passes of a `gpt-6-luna` configuration, 42 to 50 for `gpt-6.1-terra`.
+- **The certificate did not become a mark of a right answer here either.** With
+  `gpt-6-luna` and the engine alone, 15, 15 and 18 of the 17, 19 and 21 answers marked
+  `CROSS_CHECKED` were wrong by the benchmark: the figure was computed without repeated
+  rows, and it was the figure of another question. With `gpt-6.1-terra` it was 1, 2 and 2
+  of 23, 23 and 25.
+- **One pass is not in the count.** The model provider's account ran out of credit during
+  the first attempt at the campaign. One `gpt-6-luna` pass of the engine alone (268 right)
+  lost its last 13 questions to that and was replaced by a full pass; with it added as a
+  fourth pass the first comparison reads 168 / 98, p 0.00002. The passes that ran with no
+  credit at all were discarded.
+
+The fifteen passes are in `docs/benchmark-runs`, named
+`bird-pass-<model>-<configuration>-<n>-1.24.0.json` (`plain`, `profile`, `both`). The last
+row of the second table is
+`npm run bird:compare -- --a docs/benchmark-runs/bird-pass-terra-plain-1-1.24.0.json,docs/benchmark-runs/bird-pass-terra-plain-2-1.24.0.json,docs/benchmark-runs/bird-pass-terra-plain-3-1.24.0.json --b docs/benchmark-runs/bird-pass-terra-profile-1-1.24.0.json,docs/benchmark-runs/bird-pass-terra-profile-2-1.24.0.json,docs/benchmark-runs/bird-pass-terra-profile-3-1.24.0.json`.
+
 **Three figures per model** are what a reader needs to tell the model from the engine: the
 model alone in one call with the same catalog text (`BIRD_FIXED_PROMPT=true`, no tools, no
 second look, no certificate), the engine, and the engine with the profile of the data.
 
 | Model | Model alone, one call | Engine | Engine with the profile |
 |---|---|---|---|
-| `gpt-6-luna` | 215 (43.0%) | 272, 281, 272 | 329 |
-| `gpt-6.1-terra` | 381 (76.2%) | 429 | 437 |
+| `gpt-6-luna` | 215 (43.0%) | 273, 278, 263 | 319, 310, 330 |
+| `gpt-6.1-terra` | 381 (76.2%) | 430, 431, 425 | 445, 439, 446 |
 
 The first column is our own prompt, not the benchmark's baseline: engine 1.23.2, 2026-11-14,
-one pass. The 281 is the first statements of the run with the question review. Every figure
-in this table is a single pass and the columns were run on different engine versions.
-Question by question the engine is ahead of the model alone for both models (the last two
-rows of the table above), which a single pass a side is enough to say at these sizes; how
-large the distance is (57 answers for one model, 48 for the other) is what three passes
-would settle.
+one pass. The other two columns are the three passes of the campaign above, engine 1.24.0.
+The engine against the model alone was not one of the comparisons of that campaign and the
+two were run on different engine versions, so the only reading of it is the one made from
+single passes (the last two rows of the first table of this section): the engine is ahead
+for both models, by a distance that was not measured under the rule.
 
 ## Other models
 

@@ -95,9 +95,9 @@ strings, placeholders such as `-` or `N/A`, numbers kept as text and zero-padded
 where there is something a query writer has to know it puts a one-line note beside the
 column in the prompt. Without `--write` it only shows the notes. A note you edit by hand is
 kept. The notes hold a few real values of unmasked columns (a placeholder, a smallest
-value), and those reach the model. On the public benchmark this took the small model from
-272 to 329 right answers of 500, in one run, on the benchmark it was developed on
-([docs/BIRD.md](docs/BIRD.md)).
+value), and those reach the model. On the public benchmark, three passes a side, this took
+the small model from about 271 to about 320 right answers of 500 and the stronger one from
+about 429 to about 443, on the benchmark it was developed on ([docs/BIRD.md](docs/BIRD.md)).
 
 **3. It keeps learning from use.**
 
@@ -183,27 +183,29 @@ BI tool or a person, and return its result with the same certificate, with no mo
 involved ([docs/API.md](docs/API.md)). Off by default.
 
 **On a benchmark we did not write.** [BIRD Mini-Dev](docs/BIRD.md): 500 public questions over
-11 databases, PostgreSQL, context built from the schema alone. Every figure below is one
-pass, and a fifth to a quarter of the questions change outcome between two passes of the
-same model.
+11 databases, PostgreSQL, context built from the schema alone. The first row is one pass;
+the other two are three passes each on engine 1.24.0, and all three totals are given,
+because a fifth to a quarter of the questions change outcome between two passes of the same
+model.
 
 | Right answers of 500 | `gpt-6-luna` | `gpt-6.1-terra` |
 |---|---|---|
 | The model alone: one call, same catalog text, no tools, no checks | 215 (43.0%) | 381 (76.2%) |
-| Rosie | 272 (54.4%) | 429 (85.8%) |
-| Rosie with the profile of the data | 329 (65.8%) | 437 (87.4%) |
+| Rosie | 273, 278, 263 (mean 54.3%) | 430, 431, 425 (mean 85.7%) |
+| Rosie with the profile of the data | 319, 310, 330 (mean 63.9%) | 445, 439, 446 (mean 88.7%) |
 
 - **The engine adds to the model, for both.** Against the model alone, question by
   question: 101 ahead and 44 behind for `gpt-6-luna`, 68 ahead and 20 behind for
   `gpt-6.1-terra`. Single passes on different engine versions, so read it as the size of
   what the tools, the second look and the checks add, not as an exact figure.
-- **54.4% is in the same range as the model's published baseline, not a lead**: the dataset
-  card lists 51.8% for the same model with a fixed prompt, and the setups are not identical.
-- **65.8% is the profile together with one more change** (a second attempt when a total
-  repeats rows), not measured apart, on the benchmark the profile was developed on. Question
-  by question it is a gain beyond chance (141 questions ahead, 72 behind).
-- **87.4% against 85.8% is not a gain that can be claimed**: 38 questions ahead and 30
-  behind is what chance gives four times in ten.
+- **About 54% is in the same range as the model's published baseline, not a lead**: the
+  dataset card lists 51.8% for the same model with a fixed prompt, and the setups are not
+  identical.
+- **The profile is a gain for both models, question by question**: 142 questions ahead and
+  72 behind for `gpt-6-luna`, 53 and 33 for `gpt-6.1-terra` (p 0.040, close to the line).
+  For the stronger model nearly all of it comes from one database of the eleven, where the
+  data records a missing value as a value. The profile was developed on this benchmark, so
+  this says the difference is not chance, not that it carries to other data.
 - **Accuracy follows the model first.** `gpt-6.1-terra` costs about one US cent per
   question and is what we recommend for a pilot ([docs/MODELS.md](docs/MODELS.md)).
 - **The certificate caught few of these errors**: 10 of 214 wrong answers in the first run
