@@ -91,6 +91,12 @@ Response `200`:
 - `approval` (not shown above) is `null` unless the answer ran an approved query; then it
   carries `id`, `question`, `approvedBy`, `approvedOn`, `reviewBy` and the `params` used
   (`docs/APPROVED_QUERIES.md`).
+- `narrativeReplaced` (not shown above, returned since 1.27.0) is `null` unless the answer is
+  a single number and the sentence the model wrote states numbers none of which is that
+  number (as shown, rounded as the sentence rounds it, as a percentage or in thousands or
+  millions). Then it is `{ "reason": "figure_mismatch" }` and `answer` says that the result
+  is in the table and the sentence is not shown. The certificate is about the statement and
+  its rows; nothing else ties the sentence to them.
 - `unfinished` (not shown above, returned since 1.24.0) is `null` unless the request ended
   with no query run as the answer. Then it is `{ "reason" }`, `sql` is `null` and `rows` and
   `columns` are empty. The reason is the limit that stopped the model (`query_budget`,
@@ -171,7 +177,7 @@ Re-run a previous answer's validated SQL past the display cap (up to 50 000 rows
 { "answerHandle": "…" }
 ```
 
-Response `200`: `{ "columns": [{ "key": "n", "label": "n" }], "rows": [...], "rowCount": 1, "exportCapped": false }`.
+Response `200`: `{ "columns": [{ "key": "n", "label": "n" }], "rows": [...], "rowCount": 1, "exportCapped": false, "verdict": "CONTRADICTED" }`. `verdict` (since 1.27.0) is the certificate verdict of the answer the handle was minted for, `null` when it had no certificate. A client that writes these rows to a file must carry it: the widget starts the CSV with a `Rosie verdict` row, the certificate's sentences and one empty row before the header when the verdict is `CONTRADICTED`, `FLAGGED` or `NOT_CHECKED`, and leaves the file starting with the header otherwise.
 `404` with a generic message for any unverifiable handle (expired, tampered, another owner or
 project): the reason is never disclosed. `400` if the SQL no longer passes the validator.
 `403` when a row policy refuses the caller (`docs/ROW_POLICIES.md`). `500` when the query
@@ -245,7 +251,7 @@ Metadata the widget needs before the first question, plus the security gate stat
 {
   "name": "Sales", "fullName": "…", "description": "…", "welcomeMessage": "…",
   "suggestions": [ "…" ], "aiDisclaimer": "…", "governance": { "owner": "…" }, "theme": null,
-  "brand": null, "widgetVersion": "2026.11.9",
+  "brand": null, "widgetVersion": "2026.11.10",
   "maxInputLength": 2000,
   "securityHold": false, "securityCode": null, "securityMessage": null, "supportContact": null
 }

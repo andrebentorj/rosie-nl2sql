@@ -118,7 +118,7 @@ Self-hosted endpoints have not been part of the automated test suite of this rep
 | `rosie_rate_limit` | Only with `ROSIE_RATE_LIMIT_STORE=database`: one counter per client address and window. Removed by the engine about two windows later (two days for the daily quota). | Same. |
 | Audit file | The same audit records as newline-delimited JSON, as a fallback when the database is down. | `ROSIE_AUDIT_FILE` (default `logs/`). |
 
-Result rows are not stored by Rosie. Retention of these tables is yours to set, and nothing
+Result rows are not stored by Rosie. The certificate of an answer is, and it holds figures and a few values: the totals of the second derivation, and where a filter value was not found, up to eight real values of that (unmasked) column. Retention of these tables is yours to set, and nothing
 is removed unless you schedule it:
 
 ```bash

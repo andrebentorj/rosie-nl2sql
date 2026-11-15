@@ -36,7 +36,7 @@ does describe how the service is used.
 
 | Metric | Labels | Meaning |
 |---|---|---|
-| `rosie_questions_total` | `status` | One per audit record. For a question: `success`, `error`, `no_query`, `clarification`, `blocked`, `aborted`. Exports and explanations write audit records too, and theirs are counted here as `other` |
+| `rosie_questions_total` | `status` | One per audit record. For a question: `success`, `error`, `no_query`, `unfinished` (stopped by a limit before an answer query ran; counted under `no_query` until 1.27.0), `clarification`, `blocked`, `aborted`. Exports and explanations write audit records too, and theirs are counted here as `other` |
 | `rosie_blocked_total` | `reason` | Questions refused before any model call: `sensitive_info_requested`, `masked_column_requested`, `write_operation_requested`, `prompt_injection_detected` |
 | `rosie_answers_total` | `source` | Answers that returned a result, by where the statement came from: `model_sql`, `approved_query`, `compiled_metric`, `certified_sql` (a statement sent to `/certify` or `certify_sql`) |
 | `rosie_certificates_total` | `verdict` | Certificates issued, by verdict ([CERTIFICATE.md](CERTIFICATE.md)) |

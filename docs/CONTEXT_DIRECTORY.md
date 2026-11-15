@@ -110,7 +110,7 @@ Also available: `surface`, `surfaceAlt`, `surfaceDim`, `ink`, `inkSoft`, `inkFai
 `border`, `borderSoft`. A key that is set overrides the widget's automatic dark-mode
 value for that key (explicit beats auto).
 
-How the theme is applied (widget 2026.11.9):
+How the theme is applied (widget 2026.11.10):
 
 - **A theme that names `surface` decides light or dark for the whole widget.** The keys it
   does not name (inks, borders, the colours of the verdicts) follow that surface and not the
@@ -233,13 +233,37 @@ npm run profile-columns -- --table Customer --table Invoice     # only these tab
 
 - **column.profileNote**: one line the model sees in braces after the column name, while
   `AI_CATALOG_COLUMNS` and `AI_CATALOG_PROFILE` are on (both are by default).
-- **column.profile**: the counts the note was written from.
+- **column.profile**: the counts the note was written from. It also holds
+  `generatedNote`, the note the script last generated, and `hypotheses`, the kinds of guess
+  in it (`zero`, `placeholder`). The model never sees `profile`.
+- **column.profileNoteConfirmed**: set it to `true` when you, who know the data, stand behind
+  the column's note. The script never writes this field and never changes the note of a
+  column that has it. The model then sees the note as `{confirmed: ...}` and is told to
+  follow it as written.
 
-It reads through the read-only connection and never reads a masked column. Read the notes
-before `--write`: they say what the data shows, and "may mean" where they guess. A note you
-edit by hand is kept on the next run as long as you remove the `profile` counts next to it.
-Reload or restart the server after writing. The notes are derived from your data and are
-sent to the model provider with every prompt (`docs/DATA_PRIVACY.md`).
+**A generated note is an observation, not a rule.** The data shows counts and shapes: "0 in
+23% of rows, the smallest value above 0 is 14". It cannot show what the 0 means: a weight of
+0 is not recorded, a discount of 0 is a real zero. Where a note guesses, it says "may mean"
+and says that it depends on the question. Every run ends with the list of those guesses, by
+`table.column`. Go through it once with someone who knows the data, and for each one:
+
+- the guess is right: rewrite the note as a fact ("0 means not recorded, leave those rows
+  out of averages") and set `"profileNoteConfirmed": true`;
+- the guess is wrong: rewrite it ("0 is a real zero: no discount") and confirm it, or delete
+  `profileNote` when there is nothing to say;
+- you do not know: leave it. The model reads it as a hypothesis.
+
+**A rerun is safe.** The script replaces a note only while it still equals
+`profile.generatedNote`. A note you edited, deleted, wrote yourself or confirmed is kept, the
+counts beside it are refreshed, and the run reports how many notes it kept and what the data
+now reads for each. You do not need to remove `profile` to protect an edit. The catalog is
+written to a temporary file and renamed over the old one after checking that it parses and
+still has every table and column, so a failed run leaves the catalog as it was.
+
+It reads through the read-only connection and never reads a masked column. Reload or restart
+the server after writing. The notes are derived from your data, they can carry values of it
+(a placeholder, a code), and they are sent to the model provider with every prompt
+(`docs/DATA_PRIVACY.md`).
 
 ### Masked columns: three places, one rule of precedence
 

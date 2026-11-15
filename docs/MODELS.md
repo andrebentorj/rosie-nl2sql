@@ -65,8 +65,9 @@ is a single pass; the other three are three passes each on engine 1.24.0 (2026-1
   for `gpt-6.1-terra` (p 0.040). For the stronger model nearly all of it is in data that
   records a missing value as a value (one database of the eleven carries the result), and
   the profile was developed on this same benchmark.
-- **The two-figure question adds about 12 answers for `gpt-6-luna`** (98 ahead, 67 behind,
-  p 0.019). It was not run with `gpt-6.1-terra`.
+- **The two-figure question adds about 7 answers for `gpt-6-luna`.** The totals differ by
+  12 (98 ahead, 67 behind, p 0.019), and 5 or 6 of those are on questions where it never
+  acted (`docs/BIRD.md`). It was not run with `gpt-6.1-terra`.
 - The earlier single runs (329 and 437 on engine 1.23.0) are replaced by these.
 - The first row is our own prompt, not the benchmark's baseline. By the same test the engine
   is ahead of the model alone for both models: 101 questions ahead and 44 behind for
@@ -83,13 +84,15 @@ is a single pass; the other three are three passes each on engine 1.24.0 (2026-1
   sample it matches the strongest model measured at less than half the price and is faster,
   and on all 500 questions it is 31 points above the default (three passes each), at about
   US$ 0.011 per question against about US$ 0.002. Run `npm run profile-columns -- --write`
-  for it as well: it gained about 15 answers of 500 with the profile, nearly all of them
-  where the data records a missing value as a value.
+  for it as well where your data records a missing value as a value (a 0, a `-`): that is
+  where its 15 answers of 500 came from, and without that one database the gain is not told
+  apart from chance. Have someone who knows the data read the notes it writes.
 - **High volume, simple questions, cost-sensitive:** `gpt-6-luna`. It asks for clarification
   more readily and costs between a fifth and an eighth, depending on the questions. Run
   `npm run profile-columns -- --write` for it: the profile of the data is the largest gain
-  measured for this model, about 48 answers of 500. `AI_CERTIFICATE_REPAIR_UNDECLARED=true`
-  added about 12 more on the same benchmark; it is off by default (`docs/BIRD.md`).
+  measured for this model, about 48 answers of 500 on the benchmark it was developed on.
+  `AI_CERTIFICATE_REPAIR_UNDECLARED=true` added about 7 more there; it is off by default
+  (`docs/BIRD.md`).
 - **Data that must not leave the network:** a model you host behind an OpenAI-compatible
   endpoint (`docs/DATA_PRIVACY.md`). Measure it with your own question bank first.
 

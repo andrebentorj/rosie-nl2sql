@@ -445,6 +445,12 @@ The rule for every figure added to this page from now on:
    is written in these terms ("ahead, p under 0.05"), not as a total to reach.
 4. **One thing changed at a time.** The tool reads what each report says about its
    configuration and says so when two sides differ in more than one thing, or in none.
+5. **Since 1.27.0: the size with the sign, and one database taken away at a time.** A gain
+   is reported with how many answers it is worth, and with the comparison repeated without
+   each database in turn; a gain that needs one database is reported as a gain on that
+   kind of data. For a setting that acts on some questions only, the questions it did not
+   act on are compared as well: what the two sides differ by there is noise, and is taken
+   off the claim.
 
 The runs above, read this way, from the reports in `docs/benchmark-runs`. They are single
 passes, made before the rule, and the tool says so.
@@ -499,25 +505,43 @@ How to read it.
   to 37.7 right of 50 (31 questions ahead, 4 behind); formula_1 and financial follow (20 / 7
   and 17 / 3). For `gpt-6.1-terra` superhero goes from 38.3 to 47.0 (12 / 1) and
   california_schools from 37.7 to 40.7 (12 / 7), and that is most of the balance; on five of
-  the eleven databases the profile is level or slightly behind. Take away superhero and the
-  stronger model's result is 41 ahead and 32 behind, which is not a gain by this rule. So
-  the claim for that model is: it helps where the data records a missing value as a value,
-  and it was not seen to cost anything elsewhere.
-- **The two-figure question is a gain for the small model, and a small one.** About 12
-  answers of 500. In the three passes it was put 14, 16 and 12 times; the second statement
-  replaced the first 10, 12 and 9 times, and was then right 9, 11 and 9 times. It was not
-  run with the stronger model, so nothing is claimed there. It stays off by default: it
+  the eleven databases the profile is level or slightly behind (codebase_community,
+  european_football_2 and student_club lose about one answer each on average). Take away
+  superhero and the stronger model's result is 41 ahead and 32 behind (p 0.35), which is
+  not a gain by this rule. So the claim for that model is: it helps where the data records
+  a missing value as a value; elsewhere the small gains and small losses are not told apart
+  from chance.
+- **Taking one database away at a time.** The first comparison holds whichever is removed
+  (the worst case is without superhero: 111 ahead, 68 behind, p 0.002). The second does not
+  hold without codebase_community (p 0.06). The third does not hold without superhero (p
+  0.35). The questions of one database are not independent trials: the 25 weight and height
+  questions of superhero are one fact about the data asked 25 times. From now on this table
+  is part of how a gain is claimed here (rule 5 below).
+- **The two-figure question is a gain for the small model, of about 7 answers of 500, not
+  12.** In the three passes it was put 14, 16 and 12 times, on 20 different questions; the
+  second statement replaced the first 10, 12 and 9 times, and was then right 9, 11 and 9
+  times. On those 20 questions the side with it is ahead in 13 and behind in 1 (p 0.002),
+  worth 6.7 answers. On the other 480, where the setting cannot act, it is ahead in 85 and
+  behind in 66 (p 0.14), worth 5.7: that half of the 12.3 is what two sets of passes differ
+  by, not the mechanism (split first made by an independent review). Two of the 31
+  replacements went out wrong, both on one question where the records the total is taken
+  over are printings of a card and the question asks about cards: the correction removed
+  one repetition and kept another. It was not run with the stronger model, so nothing is
+  claimed there. It stays off by default: it
   changes an answer on the strength of a second model call, and the measurement is on one
   benchmark.
 - **p of 0.040 and 0.019 are under the line, not far under it.** Three comparisons were
-  made, and with three the chance of one false "gain" at this line is larger than one in
-  twenty. The first row would stand under any correction; the other two would not stand
-  under the strictest one.
-- **It is still the benchmark the profile was developed on.** Three passes settle whether
-  the difference is chance. They do not settle whether it carries to other data.
+  made, and no correction for that was chosen beforehand. Under the plain Bonferroni
+  correction only the first stands; under Holm's, which controls the same error, all three
+  do. Which correction is not what is weak in the second and third: what is weak is in the
+  two points above.
+- **It is still the benchmark the profile was developed on.** Three passes make chance
+  between passes an unlikely explanation. They do not settle whether it carries to other
+  data, and the thresholds of the profile were chosen looking at these databases.
 - **Between passes of one configuration** the totals moved by up to 15 (`gpt-6-luna`, the
-  engine) and 20 (with the profile), and 130 to 146 of the 500 questions changed outcome
-  across the three passes of a `gpt-6-luna` configuration, 42 to 50 for `gpt-6.1-terra`.
+  engine) and 20 (with the profile). Between any two passes of one configuration 82 to 101
+  of the 500 questions changed outcome for `gpt-6-luna` and 27 to 36 for `gpt-6.1-terra`;
+  across all three, 130 to 146 and 42 to 50.
 - **The certificate did not become a mark of a right answer here either.** With
   `gpt-6-luna` and the engine alone, 15, 15 and 18 of the 17, 19 and 21 answers marked
   `CROSS_CHECKED` were wrong by the benchmark: the figure was computed without repeated
@@ -533,6 +557,69 @@ The fifteen passes are in `docs/benchmark-runs`, named
 `bird-pass-<model>-<configuration>-<n>-1.24.0.json` (`plain`, `profile`, `both`). The last
 row of the second table is
 `npm run bird:compare -- --a docs/benchmark-runs/bird-pass-terra-plain-1-1.24.0.json,docs/benchmark-runs/bird-pass-terra-plain-2-1.24.0.json,docs/benchmark-runs/bird-pass-terra-plain-3-1.24.0.json --b docs/benchmark-runs/bird-pass-terra-profile-1-1.24.0.json,docs/benchmark-runs/bird-pass-terra-profile-2-1.24.0.json,docs/benchmark-runs/bird-pass-terra-profile-3-1.24.0.json`.
+
+### The notes were reworded after these passes (1.27.0)
+
+The figures of the profile above were measured with the notes as they were written in
+1.24.0. Two independent reviews then showed that the notes read as instructions where the
+data only supports a hypothesis (a discount of 0 is a real zero; `No Show` is a value; a
+numeric identifier must not be cast), and 1.27.0 rewords them:
+
+| Note | As measured (1.24.0) | Since 1.27.0 |
+|---|---|---|
+| Zero | `0 in N% of rows, the smallest other value is M: 0 may mean "not recorded"` | `0 in N% of rows, the smallest value above 0 is M: 0 may mean "not recorded" or be a real zero, whether those rows belong depends on the question`; not written when the column holds values below 0 |
+| Placeholder that is not the commonest value | `'-' in N rows may mean "not recorded"` | `'-' in N rows: may mean "not recorded" or be a value in its own right, check which` |
+| Code with leading zeros | `compare it as text, and pad a shorter code given in the question with zeros on the left` | `compare it as text; a shorter code in the question may have lost its leading zeros, check it against the stored values before padding` |
+| Numbers kept as text | `cast before comparing or sorting` | three notes by what the values look like: codes with leading zeros (compare as text), digits of one length (only arithmetic needs a cast), other numbers (sorting, ranges and arithmetic need a cast) |
+| How to read the notes (once per prompt) | leave out what the note marks as "not recorded" | the same for questions about known or recorded values, and: a note is an observation, "may mean" is a hypothesis, and for a total, an average or a count over all rows a 0 or a marker can be a real value |
+
+**So the figures above are of the old notes, and the new ones have not been measured.**
+They say less firmly what the old ones said, which may cost part of the gain on this
+benchmark and is meant to avoid the opposite error on data where 0 is a real zero, which no
+question here tests. A person who knows the data settles a hypothesis by setting
+`profileNoteConfirmed` on the column, and the note then reaches the model as confirmed.
+
+### Right answers by verdict
+
+The same fifteen passes, counted by the verdict each answer went out with (answers right by
+the benchmark, of the answers with that verdict, three passes added together):
+
+| Verdict | `gpt-6-luna` | with the profile | `gpt-6.1-terra` | with the profile |
+|---|---|---|---|---|
+| `CHECKS_PASSED` | 616 of 987 (62%) | 693 of 979 (71%) | 990 of 1,123 (88%) | 1,014 of 1,135 (89%) |
+| `NOT_APPLICABLE` | 94 of 174 (54%) | 111 of 168 (66%) | 93 of 119 (78%) | 106 of 115 (92%) |
+| `NOT_CHECKED` | 73 of 142 (51%) | 85 of 158 (54%) | 103 of 130 (79%) | 103 of 117 (88%) |
+| `FLAGGED` | 22 of 99 (22%) | 30 of 107 (28%) | 34 of 56 (61%) | 37 of 62 (60%) |
+| `CROSS_CHECKED` | 9 of 57 (16%) | 40 of 56 (71%) | 66 of 71 (93%) | 70 of 71 (99%) |
+
+- **A flag means something**: a flagged answer is right less often than any other, for both
+  models.
+- **`CROSS_CHECKED` does not mean "more likely right".** Its rate goes from 16% to 99% with
+  the model and with what the model was told about the data, on the same check. With the
+  small model and no profile it is the WORST rate of the five. The verdict is given to one
+  shape of statement (a total or an average over a join) when the join repeated nothing,
+  which is when the check had nothing to find; and an average is the calculation most
+  exposed to a zero that stands for "not recorded", which no check looked at until 1.26.0.
+  Two independent reviews read the 48 wrong ones: none was a repeated row.
+- **What changed because of this table.** Since 1.27.0 the widget shows a `CROSS_CHECKED`
+  answer in the same neutral way as `CHECKS_PASSED`, under the words "No repeated rows", and
+  the character no longer reacts to it as to a confirmed answer (`docs/WIDGET.md`). The
+  verdict code is unchanged. This table is to be published with every measurement: the
+  verdict that looks best must not have a rate below the others.
+
+### Filters below the outer SELECT
+
+Until 1.27.0 the checks on the period and on a filter value read the outer `SELECT` only.
+In these passes `gpt-6-luna` starts one statement in five with `WITH` and `gpt-6.1-terra`
+uses a derived table in one of three, so for that share a filter one level down went out
+unchecked and unreported (found by an independent review). They now look into nested
+SELECTs. Run again with no model over the final statement of every answer of the fifteen
+passes, the period check on nested filters warns on 56 answers: 25 wrong and 31 right by the
+benchmark. That is what this check is like on the outer SELECT too: it states a fact about
+the data ("the question asks for data from 2010-01-01 and the column starts at
+2010-07-21"), which is true of a right answer as often as of a wrong one, and it is not
+sent back to the model. 14 of the 31 are one question about people born in a decade, where
+the period is a date of birth and not a span of activity.
 
 ### What a cross-checked wrong answer was, and the check that came of it
 

@@ -18,13 +18,14 @@ shown next to the number: the **Answer Certificate**. When a check could not run
 that too. The checks look at the structure of the calculation, not at whether the question
 was understood; [docs/CERTIFICATE.md](docs/CERTIFICATE.md) says exactly what is covered.
 
-Two real answers from the demo database. On the left, the number was re-derived by a second
-route and matched. On the right, the question asks for a period that runs six months past
+Two real answers from the demo database. On the left, the number was computed again taking
+each record once and came out the same, which rules out a join that repeats rows and says
+nothing about whether the question was understood. On the right, the question asks for a period that runs six months past
 the last record, and Rosie says so instead of handing over a total that looks complete.
 
-| Checked and confirmed | Flagged |
+| No repeated rows | Flagged |
 |---|---|
-| ![An answer card headed "Cross-checked": 447 tracks sold in 2024, with the note "Calculation cross-checked. Re-derived over distinct InvoiceLine records and got the same value. This checks the calculation, not whether the question was understood."](docs/assets/widget-verified.png) | ![An answer card headed "Read with care": a revenue figure with the warning that the requested period is not fully covered by the data](docs/assets/widget-flagged.png) |
+| ![An answer card headed "No repeated rows": 447 tracks sold in 2024, with the note "The figure is the same when each record is taken once. Whether this is the right question was not checked. Re-derived over distinct InvoiceLine records and got the same value. This checks the calculation, not whether the question was understood."](docs/assets/widget-verified.png) | ![An answer card headed "Read with care": a revenue figure with the warning that the requested period is not fully covered by the data](docs/assets/widget-flagged.png) |
 
 Both are the widget of this version showing answers the engine gave on the demo database.
 The verdict is the first thing on the card, and the character in the corner carries it too
@@ -125,6 +126,11 @@ values only with `--samples` ([docs/DATA_PRIVACY.md](docs/DATA_PRIVACY.md)).
 | A semantic layer (dbt Semantic Layer, Cube and similar) | Prevents it by construction for what has been modeled: a metric defined once cannot be inflated by a join. Someone has to model the data first, and a question outside the model is out of reach. |
 | Rosie | Starts from the schema, with no modeling. Checks each answer after it runs and shows what it found. For a metric you do declare, it writes the query itself, as a semantic layer does, and it imports definitions from dbt and Cube. |
 
+The table is about one kind of error, a figure a join inflated, where Rosie is strong. Most
+wrong answers are of another kind: the wrong column, the wrong definition, a question read
+another way. A semantic layer prevents those for what has been modeled. Rosie prevents them
+only where you declare a metric or approve a query, and its checks do not see them.
+
 Rosie is not the only tool that deals with inflated totals: semantic layers prevent them
 where the metric is modeled. Its difference is that it checks after the fact, on questions
 nobody modeled, and shows the evidence. The limits are stated as plainly as the checks: the
@@ -183,10 +189,12 @@ BI tool or a person, and return its result with the same certificate, with no mo
 involved ([docs/API.md](docs/API.md)). Off by default.
 
 **On a benchmark we did not write.** [BIRD Mini-Dev](docs/BIRD.md): 500 public questions over
-11 databases, PostgreSQL, context built from the schema alone. The first row is one pass;
-the other two are three passes each on engine 1.24.0, and all three totals are given,
-because a fifth to a quarter of the questions change outcome between two passes of the same
-model.
+11 databases, PostgreSQL, context built from the schema alone. Accuracy follows the model
+first: `gpt-6.1-terra` costs about one US cent per question and is what we recommend for a
+pilot ([docs/MODELS.md](docs/MODELS.md)). The first row is one pass; the other two are three
+passes each on engine 1.24.0, and all three totals are given, because between two passes of
+the same configuration 16% to 20% of the questions change outcome with the small model and
+5% to 7% with the stronger one.
 
 | Right answers of 500 | `gpt-6-luna` | `gpt-6.1-terra` |
 |---|---|---|
@@ -201,22 +209,31 @@ model.
 - **About 54% is in the same range as the model's published baseline, not a lead**: the
   dataset card lists 51.8% for the same model with a fixed prompt, and the setups are not
   identical.
-- **The profile is a gain for both models, question by question**: 142 questions ahead and
-  72 behind for `gpt-6-luna`, 53 and 33 for `gpt-6.1-terra` (p 0.040, close to the line).
-  For the stronger model nearly all of it comes from one database of the eleven, where the
-  data records a missing value as a value. The profile was developed on this benchmark, so
-  this says the difference is not chance, not that it carries to other data.
-- **Accuracy follows the model first.** `gpt-6.1-terra` costs about one US cent per
-  question and is what we recommend for a pilot ([docs/MODELS.md](docs/MODELS.md)).
+- **The profile is a gain for the small model whichever database is taken away** (142
+  questions ahead, 72 behind; between 32 and 64 answers of 500). **For the stronger model it
+  is a gain only on the data it was written for**: 53 ahead and 33 behind in all, 41 and 32
+  without the one database where a missing value is recorded as 0, which chance gives one
+  time in three. The rules of the profile were chosen looking at these same databases, so
+  the measured gain is a ceiling, not an estimate for other data.
 - **The certificate caught few of these errors**: 10 of 214 wrong answers in the first run
   of the small model. Almost all the others compute something sound that is not what was
   asked, which it does not catch. An independent reading of a sample of them found about
   half come from how the data records a missing value, which is what the profile addresses.
-- **The stronger model's errors are of another kind.** Of its 63 wrong answers with the
-  profile, read one at a time, 14 are the same answer in another shape, about 15 are
-  ambiguous questions or references that do not hold, and the rest are how a value is
-  written (an identifier with a leading zero), grain, and which column was meant. A missing
-  value is 1 of the 63 ([docs/BIRD.md](docs/BIRD.md)).
+- **A clean verdict is not a measure of how likely the answer is right.** Counted over the
+  three passes with no profile, answers marked `CROSS_CHECKED` were right 16% of the time
+  with the small model and 93% with the stronger one; the verdict is the same, the model
+  and what it knows about the data are not. None of those wrong answers was a repeated row,
+  which is what that verdict rules out; half were an average that counted zeros standing
+  for "not recorded", which the certificate now flags
+  ([docs/BIRD.md](docs/BIRD.md), "Right answers by verdict").
+- **The stronger model's errors are of another kind.** Of its 63 wrong answers in an earlier
+  single run with the profile (engine 1.23.0), read one at a time by an AI agent and checked
+  by two independent reviews, about 16 are not errors for a user (the same answer in another
+  shape, a reference that does not hold), about 13 are questions with two readings, about
+  10 are which column or source was meant, and the rest are how a value is written, grain
+  and precision. A missing value is 1 of the 63. The seven that came from an identifier
+  with a leading zero no longer occur in the three passes on 1.24.0
+  ([docs/BIRD.md](docs/BIRD.md)).
 
 [docs/BIRD.md](docs/BIRD.md) lists what went wrong, including a hole in the injection filter
 that this benchmark found and that is now fixed, and the rule for when a gain is claimed.
