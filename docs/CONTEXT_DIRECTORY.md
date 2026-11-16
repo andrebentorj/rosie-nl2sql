@@ -278,20 +278,13 @@ the server after writing. The notes are derived from your data, they can carry v
 (a placeholder, a code), and they are sent to the model provider with every prompt
 (`docs/DATA_PRIVACY.md`).
 
-### Masked columns: three places, one rule of precedence
+### Masked columns: three places, added together
 
 `masked-columns.json` is the usual place: `{ "users": ["email"] }`. The catalog accepts the
 same thing in two other places, a `maskedColumns` list on a table and a root-level
-`maskedColumns` object shaped like the file. For each table the engine uses the **first**
-of these that has entries, and only that one:
-
-1. the table's own `maskedColumns` in `schema-catalog.json`;
-2. the table's entry in `masked-columns.json`;
-3. the table's entry in the catalog's root `maskedColumns`.
-
-They are not merged. A table that has its own `maskedColumns` ignores what
-`masked-columns.json` says about it, so a column listed only in the file is then readable.
-Keep each table's masks in one place. Table names are matched without regard to case.
+`maskedColumns` object shaped like the file. Since 1.26.0 the three are added together: a
+column listed in any of them is masked, and no place can unmask what another one lists.
+Table and column names are matched without regard to case.
 
 ### `row-policies.json` (optional)
 Per-user or per-tenant row isolation. Each key is a catalog table, each value a predicate over

@@ -367,7 +367,7 @@ directory. The contract is in [contexts/example/README.md](docs/CONTEXT_DIRECTOR
   conversation history.
 - An audit trail of every question, the SQL it produced and its certificate.
 
-The security test battery has more than 700 cases and runs on every commit, together with
+The security test battery has more than 850 cases and runs on every commit, together with
 live suites against real MySQL, PostgreSQL and SQL Server servers.
 
 ## Operating it

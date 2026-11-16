@@ -49,7 +49,17 @@ with the key in `OPENAI_API_KEY`.
   both found by independent reviews: a `JOIN ... USING (column)` on a masked column passed
   the validator in MySQL and PostgreSQL, which let a crafted statement compare a masked
   column and read its values back; and when a table listed `maskedColumns` of its own in the
-  catalog, the columns listed for it in `masked-columns.json` were ignored. If you ran an
+  catalog, the columns listed for it in `masked-columns.json` were ignored. Ten more were
+  closed in 1.29.2, found by an independent review that was asked to break this promise: an
+  alias with the masked column's own name (`SELECT email AS email`), a `WITH` name equal to
+  the table's name, on PostgreSQL a table alias read as a whole row, on SQL Server a
+  double-quoted column name, and six forms of one alias used for two sources at different
+  depths of a statement. They share a cause: the validator decided what a name means by
+  the parser's rule, and the database decides by scope. Since 1.29.2 the validator resolves
+  names by scope itself. The stronger defence is in the database: give the read-only user
+  no privilege on the masked columns, so that a statement the validator misreads is refused
+  there. These were verified on MySQL 8.4 and PostgreSQL 16; SQL Server was checked by the
+  test battery only, not on a live server. If you ran an
   earlier version with masked columns, see "Corrections" in
   [SECURITY_OVERVIEW.md](SECURITY_OVERVIEW.md). Since 1.26.0 a relationship that ends on a
   masked column and a masked primary key are not named to the model either, and an

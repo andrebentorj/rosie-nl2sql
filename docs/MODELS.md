@@ -18,9 +18,9 @@ rows of the reference query.
 | Model | Correct | Wrong | Other | Median time | Input tokens (cached) | Output tokens |
 |---|---|---|---|---|---|---|
 | `gpt-6.1-sol` | **96 of 110 (87.3%)** | 14 | 0 | 8.5 s | 1.14 M (1.04 M) | 30 k |
-| `gpt-6.1-terra` | 95 of 110 (86.4%) | 14 | 1 timeout | 6.9 s | 0.97 M (0.87 M) | 23 k |
+| `gpt-6.1-terra` (the default since 1.29.2) | 95 of 110 (86.4%) | 14 | 1 timeout | 6.9 s | 0.97 M (0.87 M) | 23 k |
 | `gpt-6-sol` | 89 of 110 (80.9%) | 21 | 0 | 5.3 s | 1.09 M (0.99 M) | 32 k |
-| `gpt-6-luna` (the default) | 78 of 110 (70.9%) | 30 | 2 clarifications | 5.2 s | 1.24 M (1.12 M) | 32 k |
+| `gpt-6-luna` (the default until 1.29.1) | 78 of 110 (70.9%) | 30 | 2 clarifications | 5.2 s | 1.24 M (1.12 M) | 32 k |
 
 Cost at list price, ignoring the discount providers give on cached input, so an upper bound:
 about US$ 0.0013 per question on `gpt-6-luna` (US$ 0.10 and 0.50 per million tokens) and
@@ -82,16 +82,19 @@ is a single pass; the other three are three passes each on engine 1.24.0 (2026-1
 
 - **Pilot and production where a wrong number costs something:** `gpt-6.1-terra`. On the
   sample it matches the strongest model measured at less than half the price and is faster,
-  and on all 500 questions it is 31 points above the default (three passes each), at about
+  and on all 500 questions it is 31 points above `gpt-6-luna` (three passes each), at about
   US$ 0.011 per question against about US$ 0.002. Run `npm run profile-columns -- --write`
   for it as well where your data records a missing value as a value (a 0, a `-`): that is
   where its 15 answers of 500 came from, and without that one database the gain is not told
   apart from chance. Have someone who knows the data read the notes it writes.
 - **High volume, simple questions, cost-sensitive:** `gpt-6-luna`. It asks for clarification
-  more readily and costs between a fifth and an eighth, depending on the questions. Run
-  `npm run profile-columns -- --write` for it: the profile of the data is the largest gain
-  measured for this model, about 48 answers of 500 on the benchmark it was developed on.
-  `AI_CERTIFICATE_REPAIR_UNDECLARED=true` added about 7 more there; it is off by default
+  more readily and costs between a fifth and an eighth, depending on the questions. On the
+  public benchmark it answered about 54% right against about 86%, so measure it on your own
+  questions first (`npm run evaluate`); the server logs a notice at start when a small
+  model is set. The profile of the data (`npm run profile-columns -- --write`) added about
+  48 answers of 500 for this model with the notes of 1.24.0; with the notes as reworded
+  since 1.27.0 no general gain was shown, only on data where a missing value is recorded as
+  a value. `AI_CERTIFICATE_REPAIR_UNDECLARED=true` added about 7 more; it is off by default
   (`docs/BIRD.md`).
 - **Data that must not leave the network:** a model you host behind an OpenAI-compatible
   endpoint (`docs/DATA_PRIVACY.md`). Measure it with your own question bank first.

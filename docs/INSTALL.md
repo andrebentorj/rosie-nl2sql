@@ -359,7 +359,7 @@ ROSIE_HANDLE_SECRET=<another long random value>
 
 # ─── LLM ───
 OPENAI_API_KEY=sk-...
-AI_MODEL=gpt-6-luna                          # for a pilot use gpt-6.1-terra: see docs/MODELS.md
+AI_MODEL=gpt-6.1-terra                       # the default; gpt-6-luna is cheaper and answers far fewer right: docs/MODELS.md
 AI_ASSISTANT_ENABLED=true
 # AI_BASE_URL=                               # set to swap providers: see Step 7
 
