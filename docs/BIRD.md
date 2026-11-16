@@ -623,6 +623,44 @@ differently between the two campaigns, so this is the model's writing, not the j
 It was found by looking at the passes, so it is a lead to test, with its criterion fixed
 first, and not a finding.
 
+### The engine version isolated (1.27.0, three more passes without the profile)
+
+Criteria written before the runs. With the plain configuration measured on 1.27.0 each
+comparison now differs in one thing.
+
+| `gpt-6-luna`, engine 1.27.0 | Passes | Against | Ahead / behind | p |
+|---|---|---|---|---|
+| Profile (300, 302, 301) | | plain 1.27.0 (266, 285, 277) | 114 / 88 | 0.078 |
+| | | the same without `superhero` | 83 / 85 | 0.94 |
+| Plain 1.27.0 | 266, 285, 277 | plain 1.24.0 (273, 278, 263) | 92 / 75 | 0.22 |
+| `formula_1` only: plain 1.27.0 | | plain 1.24.0 | 12 / 8 | 0.50 |
+| `formula_1` only: profile 1.27.0 | | plain 1.27.0 | 5 / 20 | 0.004 |
+
+**What may be said.**
+
+- **With the notes as 1.27.0 words them, no gain of the profile is claimed for the small
+  model.** The mean is 25 answers higher and the test does not reach the line; without
+  `superhero` there is nothing at all. The gain of the first campaign belongs to the notes
+  of 1.24.0.
+- **The engine changes of 1.25 to 1.27 are not told apart from none** in right answers.
+- **On `formula_1` the profile made the small model worse than no profile, and the cause is
+  the notes, not the engine.** That was the lead above, tested here under a criterion
+  fixed first.
+
+**The cause, and the correction (1.29.1).** `qualifying.q2` holds NULL in 3,577 of 6,967
+rows and an empty string in 23; `q3` the same with 28. The notes of 1.24.0 said both. 1.27.0
+stopped naming blank text under 1% of the rows, so the note read `no value (NULL) in 51% of
+rows` and nothing else, and the model, told how the column is empty, wrote `q2 IS NOT NULL`
+where without any note it more often wrote `q2 <> ''`. A note that names one way a column is
+empty and is silent on another is worse than no note. Since 1.29.1, once NULL is named any
+blank text in the column is named with it, however few the rows: `no value (NULL) in 51% of
+rows; and empty or blank text in 23 more rows, which IS NOT NULL does not leave out`. Over
+the 798 profiled columns of the eleven databases this changes three notes: these two and
+`codebase_community.users.location`. **The corrected notes have not been measured with a
+model.**
+
+`npm run bird:compare -- --a docs/benchmark-runs/bird-pass-luna-plain-1-1.27.0.json,docs/benchmark-runs/bird-pass-luna-plain-2-1.27.0.json,docs/benchmark-runs/bird-pass-luna-plain-3-1.27.0.json --b docs/benchmark-runs/bird-pass-luna-profile-1-1.27.0.json,docs/benchmark-runs/bird-pass-luna-profile-2-1.27.0.json,docs/benchmark-runs/bird-pass-luna-profile-3-1.27.0.json`.
+
 `npm run bird:compare -- --a docs/benchmark-runs/bird-pass-luna-plain-1-1.24.0.json,docs/benchmark-runs/bird-pass-luna-plain-2-1.24.0.json,docs/benchmark-runs/bird-pass-luna-plain-3-1.24.0.json --b docs/benchmark-runs/bird-pass-luna-profile-1-1.27.0.json,docs/benchmark-runs/bird-pass-luna-profile-2-1.27.0.json,docs/benchmark-runs/bird-pass-luna-profile-3-1.27.0.json`.
 
 ### Right answers by verdict
