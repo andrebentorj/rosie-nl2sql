@@ -21,7 +21,10 @@ The credentials in `docker-compose.yml` are demo values bound to the loopback in
 
 Since 1.30.0 `rosie_ro` is granted table by table, and on the tables with masked columns
 (`contexts/demo/masked-columns.json`) only the unmasked columns. `/health` should then show
-"masked by the database" for the demo context (on SQL Server, "not verified on SQL Server").
+"masked by the database" for the demo context on MySQL and PostgreSQL (on MySQL with the
+limits `mysql_join_using_natural` and `mysql_column_statistics`). On SQL Server it shows "masked by Rosie only", with each
+masked column readable through `PIVOT`: column grants do not stop a `PIVOT` there
+(`docs/SQLSERVER.md`).
 The users are created only when a container starts on an empty volume: a demo volume created
 before 1.30.0 keeps the old schema-wide grant, and `/health` shows "masked by Rosie only".
 Recreate it with `docker compose -f demo/docker-compose.yml down -v`, then `up -d`.
@@ -83,3 +86,42 @@ To reset the database: `docker compose -f demo/docker-compose.yml down -v`, then
 This is also how a demo created before 1.30.0 gets the column grants of `rosie_ro` (on SQL
 Server, run `./scripts/demo/setup-sqlserver.sh` again after `up -d`, since it stops when the
 data is already there).
+
+## Grant tests against the demo
+
+Three suites run against the demo containers (MySQL and PostgreSQL, the `rosie_ro` of the
+init scripts, with its column grants). They need the containers up and none runs in CI, whose
+database services have no Chinook and no column-granted account. The SQL Server proof of the
+same behaviour (`PIVOT`, views, the reviewed-view grants) is part of `npm run test:sqlserver`,
+whose column-grant sections have not yet had a green run in CI.
+
+- `npm run test:grants` (read-only, as `rosie_ro`): the grant check must say "masked by the
+  database"; 124 attack shapes from the earlier reviews (`test/grants/shapes/attacks.json`)
+  are sent raw and each must be refused with a permission error; the known database gaps
+  (`databaseGaps`: MySQL joins `USING` or `NATURAL JOIN` on a masked column, and the read of
+  `information_schema.COLUMN_STATISTICS` (`gap-mysql-column-statistics`); the SQL Server
+  `PIVOT` shapes are listed there but not run by this suite) must still run,
+  so a change of server behaviour is seen, and are never counted as protected; ordinary
+  statements must run; then the engine's own tools (`execute_query`, `validate_query`,
+  `sample_rows`, `lookup_values`, the certificate with its cross-check) and row policies run
+  under the grants, and none may be denied. Flags: `--user`, `--password`, `--engines`,
+  `--expect database|rosie`, `--readable N`, `--no-children`, `--root`, `--list`.
+- `npm run test:differential`: generates about 36,000 statements over the three engines
+  (positions, scopes, aliases, set operations, joins, `PIVOT` on SQL Server), passes each
+  through the validator and rewriter, and runs every accepted one as `rosie_ro`. The one
+  assertion: no statement the validator accepts may be denied by the database. On MySQL, no
+  accepted statement may contain `NATURAL JOIN` or `USING` a masked column; on SQL Server,
+  none may contain `PIVOT (`. It fails if the account can read `Customer.Email` (the run
+  would prove nothing). SQL Server runs offline by default (the accepted statements are
+  searched for a masked column used as a name); `--mssql-live --mssql-user U
+  --mssql-password P` runs it live. Flags: `--dialects`, `--root`, `--budget`,
+  `--concurrency`, `--sample`, `--show`, `--show-accepted`, `--show-ran-masked`.
+- `npm run test:grants:gate` (writes to the demo servers' privilege tables): creates
+  throwaway roles (`rosie_r8_gate` and helpers), turns `ROSIE_REQUIRE_COLUMN_GRANTS` on, and
+  shows the check flipping to "masked by Rosie only" when a broader grant or a role is added,
+  the pool drained, requests held and released, and on MySQL a stale connection still
+  reading; then drops every role and verifies none is left. It uses the demo's admin
+  accounts and never touches `rosie_ro`.
+
+A run of the differential that finds nothing says these statements hold, not that the
+validator is complete.

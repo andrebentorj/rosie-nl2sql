@@ -50,7 +50,10 @@ a restart.
 
 Write `{{SQL_DIALECT}}` where the prompt names the database engine. It is replaced by
 `MySQL`, `PostgreSQL` or `SQL Server` according to `DB_DIALECT`, so one context directory
-serves more than one engine.
+serves more than one engine. The engine adds its own short `## SQL dialect` note for the
+engine in use; on all three it carries the sentence "Write each table alias the same way
+every time, in one letter case; aliases that differ only by case are rejected." (MySQL has
+this note since 1.31.0.) Do not repeat or contradict it in your prompt.
 
 ## Calendar conventions in `project.json` (optional)
 
@@ -224,11 +227,31 @@ and since 1.24.0 a regeneration keeps what you wrote where the database declares
   derivation of the Answer Certificate count the records of a table by its key, and they
   use a single-column key. On a table that has none in the catalog (a view, a table with no
   declared key) they have nothing to count by: write the key by hand there.
-  `npm run check-context` fails when the key is not a column of the table.
+  `npm run check-context` fails when the key is not a column of the table. On SQL Server,
+  `COUNT(*)` over a table with masked columns is rewritten to count its key only when the
+  key column has `"nullable": false` and is not masked (`npm run generate-catalog` writes
+  `nullable` for you; a hand-written key needs it, `docs/SQLSERVER.md`).
 - **catalog.relationships** (root level): a list of `{ "from": "orders.user_id", "to":
   "users.id" }`, each end written `table.column`. Generated from foreign keys. Add by hand
   the ones the database does not declare: the model joins by them, and `query_metric` only
   joins along them.
+- **table.reviewedView** `true` (since 1.31.0): this table is a view (or a materialized
+  view) in the database, and someone reviewed it and found that it exposes no masked value.
+  A column grant on the base tables does not reach through a view, so until a catalog view
+  carries this field the masked-column grant check reports the context as "masked by Rosie
+  only" (`view_not_reviewed`). Only the boolean `true` counts. It is your statement, not a
+  check: Rosie does not read what the view selects. `npm run generate-catalog` keeps it.
+- **catalog.reviewedRoutines** (root level, since 1.31.0): `[ "schema.name", ... ]` (on MySQL
+  `"database.name"`), the definer routines the read-only account may execute that someone
+  reviewed and found return no masked value: PostgreSQL `SECURITY DEFINER` functions and
+  procedures, MySQL `SQL SECURITY DEFINER` routines. Until a routine is listed, the grant
+  check reports it `object_not_verifiable` and the context is "masked by Rosie only".
+  PostgreSQL entries are read as PostgreSQL resolves a name (unquoted parts fold to lower
+  case, `"Quoted"` parts keep their case); MySQL entries compare without case and may use
+  backquotes. A listing is by name and covers every overload of that exact name, present and
+  future. It is your statement, not a check (a listed routine whose body names a masked
+  column is still refused).
+  `npm run generate-catalog` keeps it; `npm run check-context` validates its shape.
 - **table.approxRowCount**: shown to the model next to the table name.
 - **table.domain**, **table.tags**: free labels, returned by the `list_tables` tool.
 - **catalog.version** (root level): any string or number. It is recorded in each
@@ -298,8 +321,11 @@ wizard, the vault and `check-context` read the three places through one module, 
 cannot disagree about what is masked.
 
 A mask is Rosie's own refusal. For the database to refuse the column too, give the
-read-only user no privilege on it (`docs/INSTALL.md`, Step 2); Rosie reports at startup
-whether it can still read each masked column.
+read-only user no privilege on it (`docs/INSTALL.md`, Step 2; `npm run grants` prints the
+statements); Rosie reports at startup and every 15 minutes whether it can still read each
+masked column. A mask entry for a table or column the catalog does not list keeps the
+context out of "masked by the database". On SQL Server column grants do not stop `PIVOT`;
+see `docs/SQLSERVER.md` for the design that does.
 
 A masked column is left out of everything Rosie describes to the model: the catalog summary,
 `describe_table`, relationships that end on it, metrics whose formula, filters, dimensions or

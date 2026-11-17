@@ -15,8 +15,12 @@ engine version (`package.json`).
 **Defense in depth (do not weaken one layer because another exists).** AST validator with a
 catalog-derived allowlist and PII mask, SELECT-only database user verified at startup and
 every 15 minutes, column privileges that deny the masked columns to that user (checked and
-reported per context; written by `npm run init -- --create-ro-user`, never changed by the
-server), prompt-injection and write-intent filters before the model, signed answer
+reported per context, and required before answering with `ROSIE_REQUIRE_COLUMN_GRANTS=true`;
+written by `npm run init -- --create-ro-user` or printed by `npm run grants`, never changed by
+the server; on MySQL they do not cover joins `USING` a masked column, histograms or definer
+stored functions, which the validator refuses and the grant check reports; on SQL Server
+they do not stop `PIVOT`, which only the validator stops),
+prompt-injection and write-intent filters before the model, signed answer
 handles for follow-ups, per-request budgets, rate and concurrency limits, durable audit trail.
 
 **Dependencies.** Run `npm run audit:deps` (`npm audit --audit-level=high`) before each

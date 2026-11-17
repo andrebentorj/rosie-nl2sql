@@ -191,11 +191,39 @@ place, a column grant adds nothing, and `REVOKE SELECT (email) ON <my_schema>.cu
 with "There is no such grant defined", because the privilege is held on the database, not on
 the column. Remove the broad grant first (`REVOKE SELECT ON <my_schema>.* FROM
 'rosie_readonly'@'%';`), then grant as above. `SHOW GRANTS FOR 'rosie_readonly'@'%';` must
-show no line `ON <my_schema>.*` or `ON *.*`, and no granted role (Rosie cannot evaluate a
-role's column privileges as the account, so it reports every masked column as readable
-through that role, with a `masked_column_readable` warning that names it).
-Restart Rosie after changing grants: on MySQL a revoke does not reach connections that are
-already open.
+show no line `ON <my_schema>.*` or `ON *.*`. Keep the account out of roles too: since 1.31.0
+Rosie probes the denied columns again after `SET ROLE ALL`, so a granted, default or
+mandatory role that reads a masked column is found and named in a `masked_column_readable`
+warning (a role that reads no masked column no longer fails the check).
+On MySQL a revoke does not reach connections that are already open. Restart Rosie after
+changing grants to apply them at once. Without a restart, since 1.31.0, the next check (every
+15 minutes) replaces the connections of the read-only pool when its result changes
+(`read_only_pool_drained`); until then an open connection keeps the old privilege.
+
+**MySQL does not check column privileges on join columns of `USING` or `NATURAL JOIN`.** As
+an account with column grants, MySQL 8.4 runs
+`SELECT COUNT(*) FROM customer c JOIN (SELECT 'x' AS email) d USING (email)`, which tests a
+guessed value against a masked column without reading it. Rosie's validator refuses a
+`USING` on a masked column at any depth and refuses `NATURAL JOIN` on every engine, and on
+MySQL it is the only layer that does. PostgreSQL refuses these statements in the database.
+
+**MySQL shows histograms to anyone who can read the table.** `information_schema.COLUMN_STATISTICS`
+is filtered by access to the table, not to the column: if someone ran
+`ANALYZE TABLE ... UPDATE HISTOGRAM` on a masked column, a column-granted account reads real
+values of it there. The check reports such a column as readable
+(`mysql_histogram_reads_masked`), and `npm run grants` prints
+`ANALYZE TABLE <db>.<table> DROP HISTOGRAM ON <column>;` for it. A histogram created after the
+last check is readable until the next one; Rosie's validator refuses `information_schema`.
+
+**On MySQL, views and stored routines run with their definer's rights.** A view or a function
+created with `SQL SECURITY DEFINER` (the default) returns a masked column to any account
+allowed to use it, whatever its column grants. The check lists them (below), and a definer
+routine the account may execute holds the context until you list it in `"reviewedRoutines"`;
+`npm run grants` does not take them away. A statement Rosie runs cannot name either: a view outside the catalog is
+refused by the table allowlist, and since 1.31.0 a stored function is refused by the function
+allowlist ("Function not allowed: NAME"). The database itself does not stop them under column
+grants, so on MySQL the validator is the layer there. Do not grant the account `EXECUTE` on
+routines.
 
 On MySQL, each read-only session also removes `ANSI_QUOTES`, `NO_BACKSLASH_ESCAPES`,
 `PIPES_AS_CONCAT` and `ANSI` from its own `sql_mode` (since 1.30.0), because they change how
@@ -206,13 +234,16 @@ server's global mode is not changed. MariaDB is not supported.
 `npm run init -- --create-ro-user` writes these grants for you, per engine, from the catalog
 and the masks. Its report prints the statements; the `.env` hint points to that report. It
 grants what the files say at the time it runs: when you mask another column later, take
-that column's privilege away by hand.
+that column's privilege away by hand, or run `npm run grants` (below).
 
 An account created by an earlier version, or by hand with a schema-wide grant, keeps that
 grant until you remove it. Running `--create-ro-user` again does not migrate it: it grants
 nothing to a read-only user you named as existing, and when `rosie_readonly` already exists
-its `CREATE` fails and the wizard only prints the statements. Remove the broad grant by
-hand, then grant as above:
+its `CREATE` fails and the wizard only prints the statements. `npm run -s grants >
+grants.sql` (since 1.31.0) connects as the read-only account, reads what it holds and prints
+the `REVOKE` and `GRANT` statements that bring it to this form; it never runs them. The
+runbook is [PILOT_ONBOARDING.md](PILOT_ONBOARDING.md). By hand, remove the broad grant, then
+grant as above:
 
 ```sql
 -- MySQL
@@ -227,9 +258,33 @@ ALTER ROLE db_datareader DROP MEMBER rosie_readonly;
 The table-by-table grant also keeps Rosie's own tables out of reach: that is why Step 3 puts
 them in another database. A table created later is not readable until you grant it.
 
-A column privilege does not reach through a view, which reads with its owner's rights. If a
-view in the catalog selects a masked column, mask the view's column too, or leave the view
-out of the catalog.
+A column privilege does not reach through a view, which reads with its owner's rights (on
+PostgreSQL a `SECURITY DEFINER` function does the same). If a view in the catalog selects a
+masked column, mask the view's column too, or leave the view out of the catalog. Since 1.31.0 every catalog table that is a view (or a materialized view)
+must carry `"reviewedView": true` in `schema-catalog.json`, the operator's statement that
+someone looked at it and it exposes no masked value; until it does, the check below reports
+the context as "masked by Rosie only" (`view_not_reviewed`). Rosie does not check what was
+reviewed. `npm run generate-catalog` keeps the field.
+
+**PostgreSQL: partitions and inheritance children have their own grants.** A partition or a
+table created with `INHERITS` is a separate table with its own privileges, so a column grant
+on the parent does not cover a table grant left on a child (a schema-wide grant gives one to
+every partition), and a `SELECT` on a parent reads its children's rows. The check walks
+partitions, inheritance children and parents of every masked table
+(`postgres_inheritance_reads_masked`), and `npm run grants` prints the `REVOKE` for each.
+
+**SQL Server: column grants do not stop `PIVOT`.** SQL Server 2022 checks column permissions
+on the aggregated column and the `FOR` column of a `PIVOT`, not on the columns it passes
+through. With `SELECT` on any one column of a table,
+`SELECT p.* FROM t PIVOT (COUNT(c) FOR c IN ([0])) AS p` returns every other column of `t`,
+a column `DENY` included. Rosie's validator refuses `PIVOT` and `UNPIVOT`, and on SQL Server
+it is the only layer that does. So with the column grants above, SQL Server is "masked by
+Rosie only". For the database to refuse the masked columns there, the account must have no
+permission at all on a table that has masked columns: give it a view that selects only the
+unmasked columns, mark the view `"reviewedView": true` in the catalog, and grant the account
+`VIEW DEFINITION` on the view and on the table so the check can follow the view. In the
+catalog, the table then lists its masked columns only (its other columns are read through
+the view). Details in [SQLSERVER.md](SQLSERVER.md).
 
 ### Check what the read-only account can read
 
@@ -242,62 +297,281 @@ SELECT email FROM customer WHERE 1 = 0;
 It must fail with a permission error (MySQL 1142 or 1143, PostgreSQL 42501, SQL Server 229
 or 230), and an ordinary question on the same table must still work.
 
-Rosie runs the same check itself, as the read-only account on a new connection, at startup,
-with every permission check after (every 15 minutes) and, in the HTTP server, after every
-context reload (the MCP processes pick a reloaded context up at their next check). On PostgreSQL it also asks whether
-any role the account is a member of could read the column, including roles it can only
-switch to, and reports membership in `pg_read_all_data`. It also checks that the unmasked
-columns of each masked table are still readable, or questions on that table would fail. The
-result, per context:
+Rosie runs the same check itself, as the read-only account, each context on a new connection
+of its own: at startup, with every permission check after (every 15 minutes,
+`ROSIE_PERMCHECK_INTERVAL_MS`, in the HTTP server and in both MCP processes) and, in the HTTP
+server, after every context reload. Since 1.31.0 a context is reported as
+`masked by the database` only when all of the following hold:
 
-| Result | Meaning |
+- every masked column is denied to the account, and to every role it can switch to:
+  - PostgreSQL: every role the account is a member of, directly or through a chain, including
+    `INHERIT FALSE` memberships, is asked about the column, and membership in
+    `pg_read_all_data` is reported on its own; `PUBLIC` grants are seen by the probe;
+  - MySQL: the denied columns are probed again after `SET ROLE ALL`, so a granted, default or
+    mandatory role that reads one is found;
+  - SQL Server: the column permission (`HAS_PERMS_BY_NAME`), `db_datareader`, `IMPERSONATE` on
+    another user or login, `IMPERSONATE ANY LOGIN`, `CONTROL SERVER`, and a `PIVOT` probe per
+    masked column (see "What each engine can give" below);
+- on PostgreSQL, no partition, inheritance child or parent table of a masked table lets the
+  account (or a role it is a member of) read the masked column;
+- on MySQL, no masked column has a histogram in `information_schema.COLUMN_STATISTICS`
+  (read as the account, and again under `SET ROLE ALL` when it has granted roles);
+- every unmasked column of every catalog table is readable (an account that is denied
+  everything, or points at the wrong database, is not a safe one);
+- every catalog table that is a view carries `"reviewedView": true`;
+- no view, function or procedure the account can use returns a masked column, unless it is a
+  reviewed catalog view, and none of them is beyond what the check can read:
+  - PostgreSQL: views and materialized views in any schema that depend on a masked column
+    (views over views included), and every `SECURITY DEFINER` function or procedure outside
+    `pg_catalog` and `information_schema` the account or one of its roles may execute
+    (`EXECUTE` goes to `PUBLIC` by default);
+  - MySQL: every definer view outside the catalog the account can see, and every routine
+    with `SQL SECURITY DEFINER` the account may execute according to `SHOW GRANTS` (its
+    granted roles included; `EXECUTE` or `ALL` at the global, database or routine level). A
+    routine whose only `EXECUTE` is a routine-level grant held by a role does not appear in
+    `information_schema.ROUTINES`, so its security type cannot be seen: it is judged from the
+    grant and held until it is listed. The grants are read on every check.
+    `SQL SECURITY INVOKER` ones are skipped: they run with the account's own privileges. A
+    view is shown clean only when its definition is visible (`SHOW VIEW`), reads with
+    confidence and every qualifier on a masked column name resolves to a table;
+  - SQL Server: every view, table function, scalar function and procedure the account may
+    use, followed when the account has `VIEW DEFINITION` on it;
+  - a view that reads a masked column is reported as `view_reads_masked`; a view whose
+    reads cannot be established (definition not visible or not read with confidence) is
+    `object_not_verifiable` on MySQL, and makes SQL Server `not verified on SQL Server`;
+  - routines (PostgreSQL `SECURITY DEFINER` functions and procedures, MySQL definer
+    routines) are never passed on their text: a definer routine the account may execute is
+    always `object_not_verifiable`, unless it is listed in `"reviewedRoutines"` at the top of
+    `schema-catalog.json` (below). Its body is still read to REPORT: a body that names a
+    masked table and one of its masked columns is `view_reads_masked` (kind `function` or
+    `procedure`), and that keeps the context out of `masked by the database` even when the
+    routine is listed. A `SECURITY DEFINER` function anywhere in the database that `PUBLIC`
+    may execute (the default) holds every context on that database until it is listed or
+    its `EXECUTE` is taken away; on a managed PostgreSQL that installs such platform
+    functions, run `npm run grants -- --verify` early and list the ones you have reviewed;
+- every mask entry is one the catalog and the effective mask set agree on (an entry for a
+  table or column the catalog does not list, a key written twice, a column the database does
+  not have, or a probe that failed for another reason all keep the context out of it).
+
+**`"reviewedRoutines"`.** A top-level array in `schema-catalog.json`, next to `tables` and
+`relationships`:
+
+```json
+"reviewedRoutines": [ "public.order_total", "reporting.month_key" ]
+```
+
+Each entry is `schema.name` (on MySQL `database.name`), matched the way the engine resolves
+a name:
+
+- **PostgreSQL:** an unquoted part folds to lower case and a double-quoted part keeps its
+  case (`""` for a quote inside it). So `rosie.f_clean`, `rosie.F_Clean` and
+  `rosie.F_CLEAN` all mean the function `f_clean`, and `rosie."F_Clean"` means `F_Clean`,
+  a different function. A quoted schema works the same way (`"Sales".f_y`).
+- **MySQL:** names compare without letter case; backquotes are accepted
+  (`` `Chinook`.`f_q` ``).
+
+A listing is by name. It covers every overload of that exact name, those present now and any
+created later, and it is your statement that each returns no masked value. Rosie does not
+check that statement and cannot see through it, which is the expected cost of the rule; it
+only refuses a listed routine whose body visibly names a masked column. Review a new
+overload before it is granted. `npm run generate-catalog` keeps the array, and
+`npm run check-context` reads the entries with the same parser as the check ("Reviewed
+routines": fails when it is not a list, or an entry does not have exactly two parts or has an
+unclosed quote; warns on a name listed twice under the engine's rule).
+
+The result, per context:
+
+| Result | `mode` | Meaning |
+|---|---|---|
+| `masked by the database` | `database` | Everything above holds. A statement that reaches a masked column is refused by your database, whatever Rosie's own checks miss, except the engine limits below and what the check cannot see (the end of this section) |
+| `masked by Rosie only` | `rosie` | Anything else: a masked column the account can read (directly, through a role, a PostgreSQL partition or inheritance relative, a MySQL histogram, or on SQL Server through `PIVOT`), an unmasked column it cannot read, an unreviewed catalog view, a view or routine returning a masked column or one the check cannot read, a mask entry that could not be verified. `reasons` says which |
+| `not verified on SQL Server` | `mssql` | SQL Server only: no masked column was found readable, but something the check needs could not be established there, for example an object the account may use but cannot see into (no `VIEW DEFINITION`), cross-database ownership chaining being on, or a `PIVOT` probe that could not be written. The detail is in `masked_column_not_verified` lines and under `unverified` |
+| `no masked columns` | `none` | The context masks nothing |
+| `not checked` | `unchecked` | The check could not run, for example because the database could not be reached (the counts are then `0`), or has not run yet (the counts are then `null`). An unreachable database gives this result, not `masked by Rosie only`, and no per-column warning |
+
+`reasons` lists why a context is not `masked by the database`, as stable codes:
+
+| Code | Meaning |
 |---|---|
-| `masked by the database` | Every masked column was refused by the database, and no role the account can become may read it. A statement that reaches one is refused by your database, whatever Rosie's own checks miss. The check does not see a view, a function or a copy of the column that the account can read: those still return its values |
-| `masked by Rosie only` | At least one masked column can be read by the account (directly, through a role it can become, or through any granted role on MySQL), or could not be verified (a mask the catalog does not list, a probe that failed for another reason). Only Rosie's validator stands between a statement and that column |
-| `not verified on SQL Server` | The check ran on SQL Server, but it has not been verified against a live SQL Server, so Rosie does not claim the database mode there. Check by hand |
-| `no masked columns` | The context masks nothing |
-| `not checked` | The check could not run, for example because the database could not be reached (the counts are then `0`), or has not run yet (the counts are then `null`). An unreachable database gives this result, not `masked by Rosie only`, and no per-column warning |
+| `masked_readable` | The account, or a role it can switch to, can read a masked column |
+| `sqlserver_pivot_reads_masked` | SQL Server: a `PIVOT` read a masked column the column permission denies (listed under `readable` with the role `PIVOT`) |
+| `postgres_inheritance_reads_masked` | PostgreSQL: a partition, inheritance child or parent of a masked table lets the account read the masked column (role `partition <schema>.<table> (as <role>)`, `inheritance child ...` or `parent table ...`) |
+| `mysql_histogram_reads_masked` | MySQL: a masked column has a histogram the account can read (role `histogram`) |
+| `masked_not_verified` | A masked column, or a mask entry, could not be verified |
+| `object_not_verifiable` | PostgreSQL and MySQL: a definer routine the account may execute and that is not in `"reviewedRoutines"`, or a MySQL definer view whose reads could not be established. Listed under `unverified` with status `object_not_verifiable`, no table or column, and a `detail` naming the object and what to do; not counted in `total` |
+| `unmasked_unreadable` | An unmasked catalog column cannot be read by the account |
+| `view_not_reviewed` | A catalog table is a view and has no `"reviewedView": true` |
+| `view_reads_masked` | A view, function or procedure the account can use reads a masked column and is not a reviewed catalog view (`views.exposures`, with `kind`) |
+| `views_not_checked` | The views could not be read; never taken as a pass |
+| `sqlserver_not_verified` | The reason of the `not verified on SQL Server` result |
+| `not_checked` | The check could not run |
+
+Each state also carries `limits`: what the database does not stop on that engine even in
+`masked by the database`. They never change the result.
+
+| Code | Engine | What the database does not stop |
+|---|---|---|
+| `mysql_join_using_natural` | MySQL | A masked column used as a join column of `USING` or matched by `NATURAL JOIN` is not checked for privilege: guessed values can be tested against it, several in one statement. Only Rosie's validator refuses these statements |
+| `mysql_column_statistics` | MySQL | A histogram created on a masked column after the last check is readable in `information_schema.COLUMN_STATISTICS` until the next check reports it. Rosie's validator refuses `information_schema` |
+| `mssql_pivot` | SQL Server | A `PIVOT` returns every column it passes through, whatever their permissions, on a table the account can read any column of. Only Rosie's validator, which refuses `PIVOT` and `UNPIVOT`, stops it. When the probe reads a masked column, the context is also `masked by Rosie only` |
+
+#### What each engine can give
+
+All about the database account Rosie runs questions with, when the check passes, as of its
+last run (default every 15 minutes). This is what the evidence supports today:
+
+- **PostgreSQL.** The database refuses every statement that reaches a masked column of a
+  catalog table, for the account and every role it is a member of, including through the
+  table's partitions, inheritance children and parents, through any view that depends on the
+  column, and through `SECURITY DEFINER` functions the account may execute (each one held
+  until it is listed in `"reviewedRoutines"`, which is your statement). Not covered:
+  copies of the values elsewhere, what unmasked columns reveal, what a reviewed view really
+  exposes, objects created since the last check.
+- **MySQL.** The database refuses a statement that reads a masked column by name; the check
+  also reports histograms on masked columns and definer views and routines the account can
+  use (a definer routine the account may execute holds the context until it is listed in
+  `"reviewedRoutines"`). The database does not stop a `USING` or `NATURAL` join on a masked column
+  (`mysql_join_using_natural`), a histogram created between checks
+  (`mysql_column_statistics`), or a definer routine; Rosie's validator refuses those (any
+  call to a function that is not a listed built-in included) and is a required layer there.
+  A definer view whose definition cannot be read with confidence is reported
+  `object_not_verifiable`, not passed as clean. On MySQL the database does not refuse
+  whatever Rosie's own checks miss: there it is the two layers together.
+- **SQL Server.** With column grants: no database claim (a `PIVOT` reads the masked columns of
+  any table the account can read one column of, so the result is `masked by Rosie only`).
+  With no permission on the masked tables and a reviewed catalog view: the database refuses
+  every statement on those tables; what the view shows is the operator's statement
+  ([SQLSERVER.md](SQLSERVER.md)). Common Criteria mode and application roles are untested.
+
+No independent review of 1.31.0 has happened yet.
+
+On every engine the check does not cover: what a reviewed view really exposes
+(`reviewedView` is your statement, not Rosie's), objects in a schema or database the account
+cannot see (it cannot use them either), anything created between two checks (the interval is
+the detection lag), copies of a masked value in another column or table, and what the
+unmasked columns reveal. A context with no masked columns is `no masked columns` and skips
+the view and routine checks: nothing in it is masked, so nothing is checked. Masked column
+names are Rosie's job, not the database's: the grant stops values, and Rosie's own
+description of the schema leaves the names out.
+
+#### Where the result is shown
 
 `GET /api/assistant/health` (and `/health` of `npm run mcp:http`) is public, so it shows the
 result without column names:
 
 ```json
+"columnGrantsRequired": false,
 "columnGrants": [
   { "projectId": "my-project", "mode": "rosie", "label": "masked by Rosie only",
     "total": 4, "denied": 3, "readable": 1, "unverified": 0,
-    "checkedAt": "2026-11-17T09:00:00.000Z" }
+    "reasons": [ "masked_readable" ], "limits": [ "mysql_join_using_natural", "mysql_column_statistics" ],
+    "checkedAt": "2026-11-17T09:00:00.000Z", "hold": false }
 ]
 ```
 
 `total` is the number of masked columns, `denied` how many the database refused, `readable`
-how many the account can read, `unverified` how many could not be verified. The column names
-are shown in three places:
+how many the account can read, `unverified` how many could not be verified, `reasons` and
+`limits` the codes above, and `hold` whether this context refuses requests
+(`ROSIE_REQUIRE_COLUMN_GRANTS`, below). The column names are shown in three places:
 
-- the server log, one warning per column, the first time and then only when the result
+- the server log, one line per finding, the first time and then only when the result
   changes: `masked_column_readable` (with the role, when it is readable through one),
-  `masked_column_not_verified`, and `unmasked_columns_unreadable` when a grant is too narrow
-  for questions to work. The summary line is `column_grants_checked`
-  (`column_grants_not_checked` when it could not run);
-- `npm run doctor`, in the check "Masked columns denied by the database" (a warning, never a
-  failure);
+  `masked_column_not_verified`, `unmasked_columns_unreadable` (with the columns),
+  `view_not_reviewed`, `view_reads_masked`, `object_not_verifiable` and `views_not_checked`.
+  The summary line is
+  `column_grants_checked`, with `reasons` and `limits` (`column_grants_not_checked` when it
+  could not run);
+- `npm run doctor`, in the check "Masked columns denied by the database", with the lines
+  "Catalog views reviewed", "Views reading masked columns" and "Not stopped by the database
+  on this engine". A warning; with `ROSIE_REQUIRE_COLUMN_GRANTS` on, the line
+  `ROSIE_REQUIRE_COLUMN_GRANTS` fails exactly when the gate holds (`masked by Rosie only`,
+  `not verified on SQL Server`, `not checked`) and is `ok` ("requests are served") otherwise;
 - `GET /api/assistant/admin/overview`, under `status.maskedColumns` (each readable column with
-  the roles that reach it, each unverified one with the reason), and the "Masked columns"
-  card of the console.
+  the roles that reach it, each unverified one with the reason, `reasons`, `limits`, `views`,
+  `required` and `hold`), and the "Masked columns" card of the console.
+
+`npm run grants -- --verify` runs the same check once, from the command line, and lists the
+views and routines that return a masked column ([PILOT_ONBOARDING.md](PILOT_ONBOARDING.md)).
 
 Under column grants the database hides the masked columns from the account, so the
 schema-drift comparison cannot see them. `npm run doctor` reports them as "hidden by the
 database" and does not fail on them.
 
 When the database refuses a statement for lack of privilege, Rosie logs
-`db_permission_denied` as a security event, with the error's code and never its text. Under
+`db_permission_denied` as a security event, with the error's code and never its text (on SQL
+Server since 1.31.0 also when one statement is refused on several columns at once). Under
 column grants this is usually a statement that reached a masked column and that Rosie's own
 check did not refuse.
 
-Rosie keeps answering whatever the result: it reports, it does not stop. The server does not
-issue `GRANT` or `REVOKE`. The check covers the read-only account only. `npm run init`,
-`npm run generate-catalog` and the engine pool use other credentials (`DB_USER`), which read
-whatever you granted them. It does not see views or functions that copy masked values, or
-what your unmasked columns reveal.
+**Since 1.31.0 the rule is stricter than in 1.30.0.** A deployment that 1.30.0 reported as
+`masked by the database` now reads `masked by Rosie only` when a catalog table or column is
+not readable by the account (including one the database no longer has), when a catalog view
+has no `"reviewedView": true`, when a view, function or procedure the account can use returns
+a masked column or cannot be read by the check (PostgreSQL, MySQL and SQL Server), when a
+PostgreSQL partition or inheritance relative keeps a broader grant, when a MySQL masked
+column has a histogram, or, on SQL Server, when a `PIVOT` reaches a masked column. That is
+the intended report, not a regression.
+
+#### Changing the grants
+
+When the result of a context changes, and after every reload (including the reloads of the
+console's approve, describe and dismiss actions), Rosie replaces the connections of the
+read-only pool (`read_only_pool_drained`, with `reason` `mode_changed` or `reload`): a
+statement already running finishes on its connection, a request waiting for a connection is
+served by a new one, and the old connections are closed after that. A drain fails no
+request.
+So a restart is no longer needed after a grant change; it only makes the change take effect
+at once instead of at the next check. Until then, on MySQL, a connection opened before a
+`REVOKE` keeps the old privilege.
+
+#### Requiring the database grant: `ROSIE_REQUIRE_COLUMN_GRANTS`
+
+Off by default, and never switched on by an upgrade. Off, Rosie reports and keeps answering
+whatever the result. With `ROSIE_REQUIRE_COLUMN_GRANTS=true`, a context serves requests only
+while its last result is `masked by the database` or `no masked columns` (a context that
+masks nothing has nothing for the database to deny). Anything else holds it:
+
+| Code | When |
+|---|---|
+| `E_COLUMN_GRANTS_NOT_CHECKED` | Not checked yet, the check could not run, or a reloaded context is still being checked |
+| `E_COLUMN_GRANTS_NOT_ENFORCED` | `masked by Rosie only` |
+| `E_COLUMN_GRANTS_SQLSERVER_NOT_VERIFIED` | `not verified on SQL Server` |
+
+- `POST /ask`, `/export`, `/explain` and `/certify` answer `503` with
+  `{ "error", "code", "securityHold": true, "columnGrantsHold": true }`. `/explain` runs no SQL
+  and is held anyway, like the permission hold. The message names no column.
+- The MCP tools that run SQL or hand out answers (`ask_data`, `query_metric`, `certify_sql`,
+  `run_approved_query`, `list_available_data`, `explain_answer`, `export_answer`) return a
+  tool error with the same message and code, before any quota is used.
+- At startup every request is held until the first check has run; the HTTP server listens
+  meanwhile, and the MCP servers wait for it before they connect or listen.
+- `/project-info` shows `securityHold: true` with the hold's `securityCode` and
+  `securityMessage`, so the widget shows the hold. `/metrics` `rosie_security_hold` is `1`
+  during either hold. `/health` carries `columnGrantsRequired: true` and `hold` per context;
+  the `/health` of `npm run mcp:http` answers `status: "security_hold"`.
+- A reload does not interrupt service: the context in service keeps serving until the new
+  one has been checked, then the new one takes over with its own result (held or not).
+  `POST /admin/reload` answers `"pending": true` and logs `context_reload_pending`. A reload
+  is never refused because of the check. A periodic check that finishes for a context no
+  longer in service, or while a reload waits for its own check, is not stored
+  (`column_grants_state_dropped`, `reason` `replaced` or `reload_pending`).
+- The hold is decided when a request arrives. A request already past the gate finishes if
+  the result changes while it runs; with the 15-minute check interval that adds nothing to
+  the detection lag.
+- An HTTP server that serves several projects gates `/ask`, `/export`, `/explain` and
+  `/certify`, and reports `/health` and `/project-info`, on its default context. The MCP
+  servers gate each session's own context.
+- Log events: `column_grants_required` at startup, `column_grants_hold` (error) when a
+  context becomes held, `column_grants_hold_released` when it serves again, and
+  `column_grants_request_refused` (at most one line a minute per context, with the count).
+
+The flag does not make the database layer stronger than the engine allows: the limits above
+still hold, and on SQL Server with column grants it holds every request (`masked by Rosie
+only`), which is the honest result.
+
+The server does not issue `GRANT` or `REVOKE`. The check covers the read-only account only.
+`npm run init`, `npm run generate-catalog` and the engine pool use other credentials
+(`DB_USER`), which read whatever you granted them.
 
 ---
 
@@ -514,8 +788,10 @@ npm start
 curl localhost:3001/api/assistant/health        # {"status":"ok", ...}
 curl localhost:3001/api/assistant/project-info   # should reflect the host app's project.json
 ```
-If `project-info` returns `securityHold: true`, the Step 2 probe failed. Review the
-read-only user's privileges. If `health` says `degraded` with `schemaBlockedTables` after the
+If `project-info` returns `securityHold: true`, the Step 2 probe failed: review the
+read-only user's privileges. With `ROSIE_REQUIRE_COLUMN_GRANTS=true` it can also mean the
+masked-column check did not pass; `securityCode` then starts with `E_COLUMN_GRANTS_` (Step 2,
+"Requiring the database grant"). If `health` says `degraded` with `schemaBlockedTables` after the
 first question, the engine tables are not where `DB_ENGINE_DATABASE` points (Step 3).
 
 ---
@@ -638,7 +914,9 @@ Final checklist:
 - [ ] `health` and `project-info` OK; no `securityHold`.
 - [ ] Read-only user has SELECT only (Step 2) and cannot read the engine tables.
 - [ ] `health` reports `masked by the database` for every context with masked columns (Step 2,
-      "Check what the read-only account can read"); on SQL Server, checked by hand.
+      "Check what the read-only account can read"), or you know why not: on SQL Server with
+      column grants the result is `masked by Rosie only` because of `PIVOT`.
+      `npm run grants -- --verify` exits 0 only in the first case.
 - [ ] Engine tables created where `DB_ENGINE_DATABASE` points, grants in place (Step 3).
 - [ ] Catalog covers every table/column the target questions touch, and no table you meant
       to leave out.
@@ -673,7 +951,56 @@ Final checklist:
    Running `--create-ro-user` again does not do it for you. Also run `npm run check-context`
    (step 5): since 1.30.0 it fails on two mask keys that differ only by case, a key written
    twice, a metric over a masked column and context text that writes a masked
-   `table.column`.
+   `table.column`. Since 1.31.0, `npm run -s grants > grants.sql` prints the statements that
+   migrate the account, for you to review and run ([PILOT_ONBOARDING.md](PILOT_ONBOARDING.md)).
+
+   **Upgrading to 1.31.0.** No grant and no setting is changed by the upgrade;
+   `ROSIE_REQUIRE_COLUMN_GRANTS` stays off. What you may notice:
+   - The masked-column check is stricter (Step 2): a context 1.30.0 reported as
+     `masked by the database` can now read `masked by Rosie only` because a catalog column
+     is not readable by the account, a catalog view has no `"reviewedView": true`, a
+     view or routine the account can use returns a masked column or cannot be read by the
+     check (PostgreSQL `SECURITY DEFINER` functions and MySQL definer routines the account
+     may execute, until listed in the new `"reviewedRoutines"`; MySQL definer views; SQL
+     Server views, functions and procedures), a PostgreSQL partition or inheritance relative
+     of a masked table keeps a broader grant, a MySQL masked column has a histogram, or, on
+     SQL Server, a `PIVOT` reaches a masked column. `reasons` in `/health` says which. With
+     `ROSIE_REQUIRE_COLUMN_GRANTS=true` each of these holds requests.
+   - SQL Server is checked like the other engines now. With column grants it reports
+     `masked by Rosie only` (`sqlserver_pivot_reads_masked`), where 1.30.0 said
+     `not verified on SQL Server`.
+   - `NATURAL JOIN` is refused on every engine ("NATURAL JOIN is not allowed: join with ON and
+     name the columns"). `PIVOT` and `UNPIVOT` are refused by name on SQL Server.
+   - On MySQL, table names, qualifiers and `WITH` names are rewritten to the catalog's
+     spelling before a statement runs, as on PostgreSQL; column names are left as written. A
+     table written in another letter case no longer fails with a permission error (1142).
+     An alias keeps the spelling it was declared with, and a qualifier takes a table's
+     catalog spelling only when it names an unaliased table. The MySQL prompt gains a
+     one-sentence `## SQL dialect` section, so the prompt text, and any prompt hash you
+     compare, changes for every MySQL context.
+   - On SQL Server, `COUNT(*)`, `COUNT(1)` and `EXISTS (SELECT 1 ...)` over one catalog table
+     that has masked columns are rewritten to count its key, so they also run under column
+     grants. The SQL shown with the answer reads `COUNT([Customer].[CustomerId])` instead of
+     `COUNT(*)`; the number is the same. The key is used only when the catalog marks it
+     `"nullable": false` and it is not masked (generated catalogs do); `COUNT(NULL)` is never
+     rewritten.
+   - MySQL functions are allowlisted, as they already were on PostgreSQL and SQL Server: about
+     190 built-ins a reporting `SELECT` uses. Any other function is refused with "Function not
+     allowed: NAME", and a schema-qualified call (`db.f(...)`) is refused on every engine. Left
+     out on purpose, so a statement that used them now fails: `REPEAT`, `SPACE`,
+     `EXPORT_SET`, `MAKE_SET` (one call can allocate a very large string); hashing, encryption, compression and encodings
+     (`MD5`, `SHA`, `SHA1`, `SHA2`, `CRC32`, `AES_ENCRYPT`, `AES_DECRYPT`, `COMPRESS`,
+     `UNCOMPRESS`, `TO_BASE64`, `FROM_BASE64`, `HEX`, `UNHEX`); `UUID`, `UUID_SHORT` and the
+     other functions that read server or session state (`CHARSET`, `COLLATION`, `DEFAULT`,
+     `VALUES`, ...); `SOUNDEX`, `WEIGHT_STRING`; XML and spatial functions, `JSON_TABLE` and
+     the JSON functions that modify a document; network and UUID helpers. The full list is
+     in `server/ai-assistant/dialect/mysql.js`.
+   - `DB_DIALECT=mariadb`, and a `mariadb://` URL in `npm run init`, stop with "MariaDB is not
+     supported" instead of failing every connection later.
+   - Two names that differ only by letter case are refused with a message that says what
+     was written twice: "two aliases", "two table names" or "a table name and an alias".
+   - After a grant change a restart is no longer needed: the next check drains the
+     read-only pool when its result changes.
 4. **Restart every replica**, then run `npm run doctor`. A widget loaded from
    `/api/assistant/widget.js` follows the backend by itself; a copied one must be copied
    again (6b).

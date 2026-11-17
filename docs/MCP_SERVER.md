@@ -190,7 +190,11 @@ startup, and the probe is awaited *before* the transport connects, so a client n
 window where every call is refused for a reason that is really "not checked yet". If the
 probe fails, every tool call returns an explanatory error instead of an answer. The same is
 true of the audit policy: under `ROSIE_AUDIT_POLICY=fail-closed`, tool calls are refused
-while no audit sink can record them.
+while no audit sink can record them, and of the masked-column grant check: with
+`ROSIE_REQUIRE_COLUMN_GRANTS=true` its first run is awaited too, and while the session's
+context is neither "masked by the database" nor "no masked columns" every tool that runs SQL or returns an answer gives a tool error
+with the hold message and its code (`E_COLUMN_GRANTS_...`), before any quota is used
+([INSTALL.md](INSTALL.md#requiring-the-database-grant-rosie_require_column_grants)).
 
 **The probe keeps running.** The privilege probe re-runs on `ROSIE_PERMCHECK_INTERVAL_MS`
 (default 15 min) in this process too, because a desktop client keeps it alive for days and a
@@ -257,7 +261,8 @@ npm run mcp:http
 Clients send `POST /mcp` with `Authorization: Bearer <token>`. `GET /mcp` and `DELETE /mcp`
 answer 405, because there are no sessions. `GET /health` on the same port is public and
 answers `{ "status": "ok" }`, or `"security_hold"` while the read-only user has more than
-SELECT. It is a separate process from `npm start`, with its own port.
+SELECT or a masked-column grant hold applies, with `columnGrantsRequired` and `columnGrants`
+as on the HTTP server's `/health` ([API.md](API.md)). It is a separate process from `npm start`, with its own port.
 
 There are two verifiers:
 

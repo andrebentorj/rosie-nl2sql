@@ -2620,7 +2620,7 @@ JOIN InvoiceLine il
         <div class="fact">
           <h4>Masked columns</h4>
           <p>Rosie refuses, before it runs, any statement in which it finds a column you masked, and leaves those columns out of the schema it describes to the model. This is Rosie's own reading of SQL, and independent reviews have found ways around it more than once.</p>
-          <p>So take the privilege away in the database too. Rosie checks at startup whether its read-only account can still read a masked column, and reports &ldquo;masked by the database&rdquo; or &ldquo;masked by Rosie only&rdquo; (on SQL Server, &ldquo;not verified on SQL Server&rdquo;: the check has not been verified on a live server). Text you write, such as the system prompt, is sent as you wrote it.</p>
+          <p>So take the privilege away in the database too. Rosie checks its read-only account at startup and every 15 minutes, and reports &ldquo;masked by the database&rdquo; or &ldquo;masked by Rosie only&rdquo;; it can be set to answer nothing until the database masks them. What the database can stop differs by engine: on PostgreSQL, any statement that reaches a masked column of a catalog table; on MySQL, a statement that reads one by name, but not joins <code>USING</code> one, histograms or definer routines, where Rosie is the required layer; on SQL Server, column grants do not stop a <code>PIVOT</code>, so the masked tables have to be read through reviewed views. Views, functions and copies of a value are not covered anywhere. Text you write, such as the system prompt, is sent as you wrote it.</p>
         </div>
         <div class="fact">
           <h4>No SOC 2 report and no penetration test.</h4>

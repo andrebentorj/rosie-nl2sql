@@ -53,9 +53,17 @@ with the key in `OPENAI_API_KEY`.
   account can still read those columns unless you take the privilege away. With the
   privilege taken away, a statement that reaches a masked column is refused by your
   database, whatever Rosie's own checks miss, except through a view, a function or a copy of
-  the column that the account can read. Rosie checks this at startup and reports "masked by
-  the database" or "masked by Rosie only" in `/health`; on SQL Server it reports "not
-  verified on SQL Server", because the check has not been verified on a live server. Rosie's own description
+  the column that the account can read, and except two engine limits: on MySQL a join
+  `USING` a masked column or a `NATURAL JOIN` (MySQL does not check those join columns), and
+  on SQL Server a `PIVOT` (column grants do not stop it there). Rosie's validator refuses
+  both. Rosie checks the account at startup and every 15 minutes and reports "masked by the
+  database" or "masked by Rosie only" in `/health`; on SQL Server, with column grants, the
+  honest result is "masked by Rosie only" ([SQLSERVER.md](SQLSERVER.md)). With
+  `ROSIE_REQUIRE_COLUMN_GRANTS=true` a context that is not "masked by the database" (or "no
+  masked columns") answers nothing. On MySQL the database also does not stop a histogram of
+  a masked column created between two checks or a definer stored function the account can
+  execute; Rosie's validator refuses both (since 1.31.0 MySQL functions are allowlisted) and
+  the check reports the routines. Rosie's own description
   of your schema does not name masked columns, their relationships, or metrics and examples
   that read them. Text you write (the system prompt, descriptions, metric definitions,
   examples) is sent as you wrote it. `npm run check-context` fails where that text writes a
@@ -78,8 +86,9 @@ with the key in `OPENAI_API_KEY`.
   were closed in 1.30.0. The 1.29.2 fixes were verified on MySQL 8.4 and PostgreSQL 16. The
   1.29.2 release said they were also checked on SQL Server by the test battery; because of
   a defect in the test, the battery ran those cases on the MySQL dialect only. They were run
-  on the PostgreSQL and SQL Server dialects later and hold. SQL Server has not been tested
-  on a live server. If you ran an earlier version with masked columns, see the advisory and
+  on the PostgreSQL and SQL Server dialects later and hold. For 1.31.0 the same shapes were
+  run against a live SQL Server as an account with column grants, which found the `PIVOT`
+  limit. If you ran an earlier version with masked columns, see the advisory and
   "Corrections" in [SECURITY_OVERVIEW.md](SECURITY_OVERVIEW.md). Since 1.26.0 a
   relationship that ends on a masked column and a masked primary key are not named to the
   model either, and an explanation of an earlier answer is refused when its statement is no
@@ -88,7 +97,8 @@ with the key in `OPENAI_API_KEY`.
   `SELECT` privilege on those columns away from the read-only account
   ([INSTALL.md](INSTALL.md), Step 2), so that the mask does not rest on Rosie alone. Column
   privileges do not reach through a view, which reads with its owner's rights: mask the
-  view's column too, or leave the view out of the catalog. `npm run generate-catalog` prints the column names
+  view's column too, or leave the view out of the catalog, and mark a catalog view you
+  reviewed with `"reviewedView": true` (since 1.31.0 the check requires it). `npm run generate-catalog` prints the column names
   that look like personal data and are not masked.
 - **Rows outside the caller's policy.** With [row policies](ROW_POLICIES.md), every read is
   filtered by the caller's verified identity before it runs, so the sample sent to the

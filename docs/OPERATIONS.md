@@ -141,6 +141,14 @@ application that can ask questions has no business replacing the catalog.
   id. A reload that would change it is refused; do that with a restart.
 - **`.env` is not reread.** Database credentials, the model and limits are process
   configuration. Changing them needs a restart.
+- **The masked-column check runs on the new context.** After every reload the HTTP server
+  checks the new context's masked columns as the read-only account and drains the read-only
+  pool. With `ROSIE_REQUIRE_COLUMN_GRANTS=true` the check runs first: the endpoint answers
+  `"pending": true`, `context_reload_pending` is logged, the context in service keeps serving,
+  and the new one takes over with its own result, held or not. The reload is never refused
+  because of the check, and a periodic check that overlaps it is not stored
+  (`column_grants_state_dropped`). The drain fails no request: one waiting for a connection
+  is served by a new one. The console's approve, describe and dismiss actions reload too.
 
 ### With more than one replica
 
@@ -424,7 +432,8 @@ other page explains. All are read at startup; changing one needs a restart.
 | `LOG_LEVEL` | `info` | `error`, `warn`, `info` or `debug`. Full SQL text is logged only at `debug`; filter values can hold personal data, so keep production at `info`. So is the text of a database error, which can quote a stored value (since 1.30.0; before, at `error`) |
 | `LOG_FORMAT` | `pretty` | `json` writes one JSON object per line, for a log aggregator |
 | `ROSIE_EVAL_DIR` | `<context>/eval/runs` | Where `npm run evaluate` writes its runs and where the server reads the last one. Set it when the context is mounted read-only |
-| `ROSIE_PERMCHECK_INTERVAL_MS` | `900000` | How often the privileges of the read-only user are checked again. A value under one minute is replaced by the default |
+| `ROSIE_PERMCHECK_INTERVAL_MS` | `900000` | How often the privileges of the read-only user, and its masked-column grants, are checked again. A value under one minute is replaced by the default |
+| `ROSIE_REQUIRE_COLUMN_GRANTS` | `false` | `true` refuses every request that would run SQL for a context that is not "masked by the database" or "no masked columns" ([INSTALL.md](INSTALL.md#requiring-the-database-grant-rosie_require_column_grants)) |
 | `ROSIE_MCP_HTTP_ENABLED` | `false` | Must be `true` for `npm run mcp:http` to start ([MCP_SERVER.md](MCP_SERVER.md)) |
 | `ROSIE_MCP_HTTP_HOST`, `ROSIE_MCP_HTTP_PORT` | `127.0.0.1`, `3002` | Where the MCP HTTP transport listens |
 | `AI_MAX_TOKENS` | `2048` | Tokens the model may write per reply |

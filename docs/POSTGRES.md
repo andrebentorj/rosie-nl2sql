@@ -110,7 +110,43 @@ when the names are not lower case, must fail with `42501` (permission denied). R
 asks every role the account is a member of, and reports the result in `/health`
 ([INSTALL.md](INSTALL.md#check-what-the-read-only-account-can-read)). A column privilege does
 not reach through a view, which reads with its owner's rights: mask the view's column too,
-or leave the view out of the catalog.
+or leave the view out of the catalog. Since 1.31.0 the check also follows, through
+`pg_depend`, every view and materialized view that reads a masked column (views over views
+included) and reports one the account or a role it can switch to can read
+(`view_reads_masked`), unless it is a catalog view marked `"reviewedView": true`; and a
+catalog view without that mark keeps the result at "masked by Rosie only"
+(`view_not_reviewed`). It also walks the partitions, inheritance children and parents of
+every masked table (each is a table with its own privileges, and a schema-wide grant gives
+one to every partition; `postgres_inheritance_reads_masked`), and lists every
+`SECURITY DEFINER` function or procedure outside `pg_catalog` and `information_schema` that
+the role or one of its roles may execute (`EXECUTE` goes to `PUBLIC` by default). Such a
+function is never passed on its text: it is `object_not_verifiable` unless it is listed in
+`"reviewedRoutines"` at the top of `schema-catalog.json` (`"schema.name"`, read as
+PostgreSQL resolves a name: an unquoted part folds to lower case, a double-quoted part keeps
+its case, so `rosie.F_Clean` means `f_clean` and `rosie."F_Clean"` means `F_Clean`). A
+listing is by name and covers every overload of that exact name, present and future: it is
+your statement, not a check. A listed one whose body names a masked column is still
+`view_reads_masked` and keeps the result at "masked by Rosie only". `npm run -s grants` prints the `REVOKE` and `GRANT` statements for the
+role as it is, PUBLIC, role memberships, default privileges and grants on partitions and
+inheritance relatives included ([PILOT_ONBOARDING.md](PILOT_ONBOARDING.md)); it does not
+revoke views or functions.
+
+With column grants, the check passing and `ROSIE_REQUIRE_COLUMN_GRANTS=true`, PostgreSQL
+refuses any statement that reaches a masked column of a catalog table, including joins
+`USING` it (42501), which MySQL does not. When the check passes, as of its last run: the
+database refuses every statement that reaches a masked column of a catalog table, for the
+account and every role it is a member of, including through the table's partitions,
+inheritance children and parents, through any view that depends on the column, and through
+`SECURITY DEFINER` functions the account may execute (each held until it is listed in
+`"reviewedRoutines"`, your statement). Not covered: copies of the values
+elsewhere, what unmasked columns reveal, what a reviewed view really exposes, objects created
+since the last check. No independent review of 1.31.0 has happened yet.
+
+A `SECURITY DEFINER` function anywhere in the database that `PUBLIC` may execute holds
+every context on that database until it is listed in `"reviewedRoutines"` or its `EXECUTE`
+is taken from `PUBLIC`. On a managed PostgreSQL whose platform installs such functions, run
+`npm run grants -- --verify` early, review the functions it names, and list the ones that
+return no masked value. The listing is your statement; the check cannot see through it.
 
 At startup, and every 15 minutes after, Rosie checks this role and refuses to answer
 (`securityHold`) if it finds any of:
@@ -152,7 +188,8 @@ allocate a gigabyte). The list is `ALLOWED_FUNCTIONS` in
 | `UNION`, `INTERSECT`, `EXCEPT`, `SELECT INTO`, locking reads | Not needed for analytics; each widens what a statement can reach. `UNION ALL` alone is accepted, inside a derived table or `WITH` body, with every branch validated as a statement of its own (`AI_UNION_ALL=false` refuses it too) |
 | Casts to `regclass`, `oid` and other system types | Catalog lookups in disguise |
 | `current_user`, `session_user`, `current_schema` and bare `user` | Session information |
-| `NATURAL JOIN`, `OFFSET` without `LIMIT` | The SQL parser reads them differently from the server |
+| `NATURAL JOIN` | It joins on every shared column name without naming one. Refused on every engine since 1.31.0 ("NATURAL JOIN is not allowed: join with ON and name the columns") |
+| `OFFSET` without `LIMIT` | The SQL parser reads it differently from the server |
 
 **Mixed-case identifiers.** A model often writes `FROM Invoice` for a table created as
 `"Invoice"`, which PostgreSQL folds to `invoice` and fails. Before a statement runs, every
