@@ -173,7 +173,12 @@ unmasked column names, type family and enum codes (`AI_CATALOG_COLUMNS`, default
 model therefore writes SQL from the prompt and calls `describe_table` only for a column's
 meaning. Do NOT write "always call describe_table before every query" into your
 `system-prompt.txt`: that instruction alone costs one or two model round-trips per question.
-Richer fields improve both the summary and the `describe_table` tool output:
+Richer fields improve both the summary and the `describe_table` tool output. Since 1.30.0
+`describe_table` sends a fixed list of fields and nothing else: for a column `name`, `type`,
+`nullable`, `description`, `synonyms`, `enumValues`, `measure`, `additive`, `profileNote`
+and `profileNoteConfirmed`; for the table `name`, `description`, `primaryKey`, `columns`,
+`relationships` and `entity`; for a relationship `from`, `to`, `type` and `inferred`. A
+field you add to the catalog that is not in these lists does not reach the model.
 
 - **table.entity** `{ "name": "card", "key": "name" }`: says that the thing your users ask
   about is not one row of this table. A card printed in five sets is five rows and one
@@ -273,7 +278,8 @@ now reads for each. You do not need to remove `profile` to protect an edit. The 
 written to a temporary file and renamed over the old one after checking that it parses and
 still has every table and column, so a failed run leaves the catalog as it was.
 
-It reads through the read-only connection and never reads a masked column. Reload or restart
+It reads through the read-only connection and leaves masked columns out of the statements
+it runs. Reload or restart
 the server after writing. The notes are derived from your data, they can carry values of it
 (a placeholder, a code), and they are sent to the model provider with every prompt
 (`docs/DATA_PRIVACY.md`).
@@ -284,7 +290,24 @@ the server after writing. The notes are derived from your data, they can carry v
 same thing in two other places, a `maskedColumns` list on a table and a root-level
 `maskedColumns` object shaped like the file. Since 1.26.0 the three are added together: a
 column listed in any of them is masked, and no place can unmask what another one lists.
-Table and column names are matched without regard to case.
+Table and column names are matched without regard to case. Since 1.30.0 that also holds
+inside one place: `"Users": ["email"]` and `"users": ["password"]` in one file mask both
+columns (1.29.2 and earlier applied only the first key). Keep one key per table all the same:
+`npm run check-context` fails on two keys that differ only by case. The server, the setup
+wizard, the vault and `check-context` read the three places through one module, so they
+cannot disagree about what is masked.
+
+A mask is Rosie's own refusal. For the database to refuse the column too, give the
+read-only user no privilege on it (`docs/INSTALL.md`, Step 2); Rosie reports at startup
+whether it can still read each masked column.
+
+A masked column is left out of everything Rosie describes to the model: the catalog summary,
+`describe_table`, relationships that end on it, metrics whose formula, filters, dimensions or
+text read it, and verified examples whose SQL reads it or whose question or note writes it as
+`table.column`. Text you write yourself (the system prompt, descriptions, clarification
+rules) is sent as written. `check-context` fails where that text writes a masked
+`table.column` and warns where it contains the column's words; it cannot see a paraphrase.
+Do not tell the model which columns are masked.
 
 ### `row-policies.json` (optional)
 Per-user or per-tenant row isolation. Each key is a catalog table, each value a predicate over

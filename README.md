@@ -6,8 +6,8 @@
 
 <p align="center"><b>Ask your database in plain language. See what was checked, and what was not.</b></p>
 
-Rosie is a self-hosted text-to-SQL engine for MySQL, PostgreSQL and SQL Server (MariaDB uses
-the MySQL dialect and is not part of the test matrix). You point it at
+Rosie is a self-hosted text-to-SQL engine for MySQL, PostgreSQL and SQL Server (MariaDB is
+not supported). You point it at
 a database, it learns the schema, and people (through an embeddable chat widget) or AI agents
 (through MCP) ask questions in plain language. Rosie writes the SQL, checks it, runs it
 read-only and answers.
@@ -49,9 +49,11 @@ that statement, the certificate reports both figures and marks the answer `CONTR
   with the evidence. A check that could not run is reported as not run.
   [docs/CERTIFICATE.md](docs/CERTIFICATE.md).
 - **Read-only, and it proves it.** SQL is validated on its syntax tree against an allowlist
-  before it runs, masked columns are never read, row policies are applied by the engine from
-  the caller's verified identity, and Rosie stops answering if its database user can do more
-  than SELECT. [docs/SECURITY_OVERVIEW.md](docs/SECURITY_OVERVIEW.md).
+  before it runs, statements that name a masked column are refused by Rosie's validator, row
+  policies are applied by the engine from the caller's verified identity, and Rosie stops
+  answering if its database user can do more than SELECT. Take the masked columns' privilege
+  from the database account as well, so the database refuses them too; Rosie checks at
+  startup whether it did. [docs/SECURITY_OVERVIEW.md](docs/SECURITY_OVERVIEW.md).
 - **Short to install, short to embed.** `npm run init` to set up, `npm run doctor` to find
   what is wrong and how to fix it, one script tag for the chat widget, one command to add
   it to Claude or Cursor over MCP. [Install](#install), [Connect](#connect).
@@ -80,7 +82,7 @@ from the database, and it grows from use.
 |---|---|---|
 | Structure | Tables, views, columns, types, primary and foreign keys and approximate row counts, from the database's own system catalogs. No rows. | `schema-catalog.json`, which is also the allowlist: what is not in it cannot be queried. |
 | Relationships | Column names, where the database declares no foreign key. | Proposed joins, for you to confirm. |
-| Personal data | Column names only. | `masked-columns.json`: columns that are never read, returned or sent to the model. You confirm the list. |
+| Personal data | Column names only. | `masked-columns.json`: columns Rosie refuses to read or return and leaves out of what it tells the model. Give the read-only account no privilege on them. You confirm the list. |
 | Meaning | The catalog, and sample values only if you allow it (`--samples`). | Descriptions, synonyms, what each code means, metrics, the assistant's instructions and the questions it should ask back when a request is ambiguous. |
 | Examples | Your database. | `verified-queries.json`: each example has to pass the validator and run on your data, or it is dropped. |
 | A first question bank | Your database. | Questions with expected results taken from real execution, to measure accuracy before anyone uses it. |
@@ -153,7 +155,7 @@ understood, and a passed check does not mean the answer is right
 |---|---|
 | **Answer Certificate** | After the SQL runs: detects joins that inflate totals, filters on values that do not exist, periods the data only partly covers, filters that remove nothing, and queries that ignore a declared metric definition. For totals over joins it re-derives the number by a second route: `CROSS_CHECKED` when both agree, `CONTRADICTED` when they differ and the context says the column counts once per record, and both figures side by side when the statement alone cannot say which was meant. It does not re-derive every shape (several totals in one statement, a total inside a function, a zero result: [docs/CERTIFICATE.md](docs/CERTIFICATE.md)), and then the verdict is `NOT_CHECKED` with the reason. With the checks on, which is the default, an answer that ran SQL carries a verdict. |
 | **Read-only by construction** | SQL is parsed and validated before it runs: SELECT only, tables and columns from an allowlist, no system functions. The database user is checked at startup and Rosie refuses to answer if it can do more than SELECT. |
-| **Personal data stays put** | Masked columns are never read, never returned and never sent to the model provider. |
+| **Masked columns** | Rosie refuses statements that read a masked column and leaves masked columns out of the schema it describes to the model. Reviews have found ways around this check, most recently in 1.29.2 ([Corrections](docs/SECURITY_OVERVIEW.md#corrections)). Give the read-only account no privilege on them: Rosie then reports "masked by the database" in `/health` (on SQL Server, "not verified on SQL Server"), and a statement its own check misses is refused by your database, except through a view, a function or a copy of the column that the account can read. |
 | **Per-tenant isolation** | Row policies filter every query by the caller's verified identity (JWT). The filter is applied by the engine, not by the model, and cannot be talked around. |
 | **Approved queries** | A query a person reviewed for a question is run unchanged when the question comes back, with only the values swapped, and the answer says who approved it. The checks cover the calculation; this covers the meaning. |
 | **Metrics with one definition** | Declare "revenue" once, or import it from dbt or Cube. For a declared metric the engine writes the query itself, formula and joins, so it cannot be inflated by a join. A query the model writes on its own is compared with the definition when it adds the column up straight from tables; through a subquery that comparison stays silent and the fan-out checks speak. |
@@ -365,7 +367,10 @@ directory. The contract is in [contexts/example/README.md](docs/CONTEXT_DIRECTOR
   columns, no system catalogs, no dangerous functions. The one set operation accepted is
   `UNION ALL` inside a derived table, with every branch validated on its own. On PostgreSQL
   and SQL Server, functions are allowlisted.
-- Masked columns enforced by the validator, in every tool, on every engine.
+- Masked columns refused by the validator in every tool that runs SQL; the database's column
+  privileges are the layer that does not depend on Rosie. At startup Rosie tries each masked
+  column as its read-only account and reports per context "masked by the database" or
+  "masked by Rosie only", and on SQL Server "not verified on SQL Server" ([docs/INSTALL.md](docs/INSTALL.md#step-2-create-the-read-only-database-user-do-not-skip)).
 - Row policies applied to every read, including exports and the certificate's own probes.
 - A prompt-injection filter in front of the model, applied to the question and to the
   conversation history.
@@ -373,6 +378,12 @@ directory. The contract is in [contexts/example/README.md](docs/CONTEXT_DIRECTOR
 
 The security test battery has more than 850 cases and runs on every commit, together with
 live suites against real MySQL, PostgreSQL and SQL Server servers.
+
+**Security reviews.** Independent reviews have found ways around Rosie's validator more than
+once, most recently in 1.29.2, and a test battery only checks the shapes someone thought
+of. The database grant is the layer that does not depend on Rosie. If you ran 1.29.2 or
+earlier with masked columns, read the
+[operator advisory](docs/SECURITY_OVERVIEW.md#advisory-masked-columns-in-1292-and-earlier).
 
 ## Operating it
 

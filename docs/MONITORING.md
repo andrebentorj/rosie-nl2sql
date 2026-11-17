@@ -111,6 +111,31 @@ Two ratios are worth a panel even without an alert:
   the engine wrote from a definition, and it should grow as the review queue is worked
   ([APPROVED_QUERIES.md](APPROVED_QUERIES.md), [METRICS.md](METRICS.md)).
 
+## Log events worth an alert
+
+Some conditions have no metric yet and appear only in the server log, one JSON line with an
+`event` field. These are the ones added in 1.30.0. Match on `event`, never on the message
+text. The masked-column check has no metric for its result; `/health` carries it as
+`columnGrants` ([API.md](API.md)).
+
+| Event | Level | Meaning |
+|---|---|---|
+| `masked_column_readable` | warn | The read-only account can read a masked column, directly or through a role (named in `roles`). Logged the first time and when the result changes ([INSTALL.md](INSTALL.md#check-what-the-read-only-account-can-read)) |
+| `masked_column_not_verified` | warn | A masked column whose privilege could not be verified (a mask the catalog does not list, a probe that failed) |
+| `unmasked_columns_unreadable` | warn | The account cannot read every unmasked column of a masked table, so questions on that table will fail: grant those columns. With `probe` other than `denied` or `missing`, the probe failed for another reason |
+| `column_grants_checked` | info or warn | The summary of one check, per context: info when every masked column is denied by the database, warn otherwise |
+| `column_grants_not_checked` | warn | The check could not run, for example because the database could not be reached |
+| `db_permission_denied` | warn | The database refused a statement for lack of privilege. Usually a statement that reached a masked column and that Rosie's validator did not refuse. Carries `security: true` |
+| `policy_rewrite_revalidation_failed` | warn | A statement rewritten for a row policy did not pass the validator again. Logged, not enforced, in this release ([ROW_POLICIES.md](ROW_POLICIES.md)). Carries `security: true` |
+| `previous_answer_dropped` | info | A follow-up's previous statement no longer passes the validator, so the follow-up starts from nothing |
+| `metric_withheld_masked` | warn | Metrics left out of the prompt and of `list_metrics` because they read a masked column |
+| `masked_columns_duplicate_keys` | warn | The masks name one table under two keys that differ only by case. Both are applied; keep one |
+| `masked_name_in_context_text` | warn | Text in the context (prompt, descriptions, examples) writes a masked `table.column`, and that text is sent to the model as written |
+
+`masked_column_readable` and `db_permission_denied` are the ones to page on: the first says
+a masked column is within reach of the read-only account, the second that a statement
+reached one and only the database stopped it.
+
 ## Limits
 
 - Counters live in the process and restart at zero with it, which is what Prometheus

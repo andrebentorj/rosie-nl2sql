@@ -21,7 +21,7 @@ Host app (Angular/React)                Rosie backend (Node, 1 instance per proj
 
 ## Quick start
 
-You need Node.js 22 or newer, a MySQL, MariaDB, PostgreSQL or SQL Server database, and a model API key.
+You need Node.js 22 or newer, a MySQL, PostgreSQL or SQL Server database (MariaDB is not supported), and a model API key.
 
 ```bash
 git clone <repository url> rosie && cd rosie
@@ -38,7 +38,7 @@ npm start
 | It produces | What it is |
 |---|---|
 | `schema-catalog.json` | Tables, columns, relationships, descriptions and metrics. Also the allowlist of what can be queried. |
-| `masked-columns.json` | Columns that look like personal data, which Rosie will never read or send to the model. |
+| `masked-columns.json` | Columns that look like personal data, which Rosie refuses to read or to describe to the model. Take them away from the read-only account too (Step 2). |
 | `system-prompt.txt`, `project.json` | The assistant's instructions and its welcome message and suggestions. |
 | `verified-queries.json`, `clarification-rules.json` | Example questions with SQL that was run against your database, and rules for ambiguous questions. |
 | `eval/questions/` | A first question bank, with expected results computed from your data. |
@@ -50,7 +50,7 @@ It then prints the configuration to connect an AI client over MCP.
 |---|---|
 | `--url <url>` | `mysql://...`, `postgres://...` or `mssql://...`. The scheme selects the engine. To keep the password out of your shell history, put the URL in the `DB_URL` environment variable instead. |
 | `--name <name>` | Project name. Default: the database name. |
-| `--create-ro-user` | Creates `rosie_readonly`, a user that can only SELECT, with a generated password written to the `.env`. **Writes to your database**; needs an account allowed to create users. If it cannot, the statements to run are printed. Without this option no user is created. |
+| `--create-ro-user` | Creates `rosie_readonly`, a user that can only SELECT, with a generated password written to the `.env`. It grants table by table, and on tables with masked columns only the unmasked columns, from the catalog and the masks (Step 2). **Writes to your database**; needs an account allowed to create users. If it cannot, the statements to run are printed. On PostgreSQL and SQL Server the statements run in one transaction, so a failure leaves nothing behind; on MySQL they stop at the first failure, and the wizard says the account exists but is incomplete, lists what ran and what did not, and prints the `DROP USER` to clean up. Without a catalog it does not create the user. Without this option no user is created. |
 | `--create-engine-tables` | Creates Rosie's four engine tables (`rosie_audit_log`, `rosie_answer_certificate`, `rosie_feedback`, `rosie_rate_limit`). **Writes to your database.** Add `--engine-db <name>` to keep them in a separate database. Without this option no table is created. |
 | `--samples` | Lets sample values of unmasked columns go to the model provider while the context is generated. Descriptions and enum codes come out better. Off by default. |
 | `--context <dir>` | Where to write the context. Default: `contexts/my-project`. |
@@ -63,7 +63,10 @@ What the quick start leaves for a person:
    personal data, which is handled in two levels:
    - **Masked** (`masked-columns.json`): direct identifiers and secrets, such as e-mail,
      phone, street address, postal code, national ids, birth date, salary and credentials.
-     Rosie never reads them or sends them to the model.
+     Rosie refuses statements that read them and does not describe them to the model. For
+     the database to refuse them as well, give the read-only account no privilege on them
+     (Step 2). `--create-ro-user` grants that way, from the catalog and the masks it has
+     just written; when you change the masks afterwards, change the grants too.
    - **Left readable, listed under "NOT masked, review" in the wizard's report**: attributes
      that describe a person without identifying one alone, such as name, city, state,
      country, company and job title. Questions like "customers by country" need them. Add
@@ -127,13 +130,13 @@ the comment at the top of the `Dockerfile`).
 
 ## Manual installation (reference)
 
-The SQL in Steps 2 and 3 is written for MySQL and MariaDB. For PostgreSQL the same steps,
+The SQL in Steps 2 and 3 is written for MySQL. For PostgreSQL the same steps,
 with their statements, are in `docs/POSTGRES.md`; for SQL Server in `docs/SQLSERVER.md`.
 
 ### Prerequisites
 
 - Node.js **22 or newer** (24 LTS recommended; `.nvmrc` pins 24 and `.npmrc` refuses older runtimes because Node 18 is end-of-life) and access to the Rosie repository.
-- Access to **the host app's database** (MySQL, MariaDB, PostgreSQL or SQL Server: host, port, schema) with permission to create a user
+- Access to **the host app's database** (MySQL, PostgreSQL or SQL Server: host, port, schema; MariaDB is not supported) with permission to create a user
   and a database for Rosie's engine tables.
 - An **LLM API key** (OpenAI, or any OpenAI-compatible provider; see Step 7 for Claude).
 - The **origin** of the host app's front end (e.g. `https://app.example.com`), needed for CORS.
@@ -162,18 +165,139 @@ startup, and every 15 minutes after, a permission probe
 privilege beyond SELECT, the **server stays up but `/ask`, `/export`, `/explain` and
 `/certify` return 503**. This is the #1 install mistake.
 
+Grant it **table by table**, and **column by column** on the tables that have masked
+columns: the unmasked columns only. Do not grant the whole schema. Rosie's validator refuses
+statements in which it finds a masked column, but independent reviews have found ways around
+that check more than once; a column the account has no privilege on is refused by the
+database, whatever the statement looks like. The tables are those of `schema-catalog.json`
+and the masked columns those of `masked-columns.json` (Step 4); if you do not have them yet,
+create the user now and come back to the grants after Step 4d.
+
+MySQL:
+
 ```sql
 CREATE USER 'rosie_readonly'@'%' IDENTIFIED BY '<strong password>';
-GRANT SELECT ON <my_schema>.* TO 'rosie_readonly'@'%';
--- Stronger, for tables that hold personal data: grant the columns Rosie may read and leave
--- the masked ones out, so the database refuses them whatever Rosie does.
--- GRANT SELECT (id, name, country) ON <my_schema>.customer TO 'rosie_readonly'@'%';
--- Grant nothing beyond SELECT.
-FLUSH PRIVILEGES;
+-- A table with no masked column: the whole table.
+GRANT SELECT ON <my_schema>.invoice      TO 'rosie_readonly'@'%';
+GRANT SELECT ON <my_schema>.invoice_line TO 'rosie_readonly'@'%';
+-- A table with masked columns: its unmasked columns only, no table-level grant.
+GRANT SELECT (customer_id, first_name, last_name, city, country)
+      ON <my_schema>.customer TO 'rosie_readonly'@'%';
+-- Nothing beyond SELECT, no GRANT ... ON <my_schema>.*, no roles.
 ```
 
-This grant covers every table of `<my_schema>`, now and later. That is why Step 3 puts
-Rosie's own tables in another database: the read-only user must not be able to read them.
+**A narrower grant does not remove a broader one.** With `GRANT SELECT ON <my_schema>.*` in
+place, a column grant adds nothing, and `REVOKE SELECT (email) ON <my_schema>.customer` fails
+with "There is no such grant defined", because the privilege is held on the database, not on
+the column. Remove the broad grant first (`REVOKE SELECT ON <my_schema>.* FROM
+'rosie_readonly'@'%';`), then grant as above. `SHOW GRANTS FOR 'rosie_readonly'@'%';` must
+show no line `ON <my_schema>.*` or `ON *.*`, and no granted role (Rosie cannot evaluate a
+role's column privileges as the account, so it reports every masked column as readable
+through that role, with a `masked_column_readable` warning that names it).
+Restart Rosie after changing grants: on MySQL a revoke does not reach connections that are
+already open.
+
+On MySQL, each read-only session also removes `ANSI_QUOTES`, `NO_BACKSLASH_ESCAPES`,
+`PIPES_AS_CONCAT` and `ANSI` from its own `sql_mode` (since 1.30.0), because they change how
+the server reads a statement that Rosie's validator has already checked. It reads the mode
+back, and a session that still has one of them is refused: no statement runs on it. Your
+server's global mode is not changed. MariaDB is not supported.
+
+`npm run init -- --create-ro-user` writes these grants for you, per engine, from the catalog
+and the masks. Its report prints the statements; the `.env` hint points to that report. It
+grants what the files say at the time it runs: when you mask another column later, take
+that column's privilege away by hand.
+
+An account created by an earlier version, or by hand with a schema-wide grant, keeps that
+grant until you remove it. Running `--create-ro-user` again does not migrate it: it grants
+nothing to a read-only user you named as existing, and when `rosie_readonly` already exists
+its `CREATE` fails and the wizard only prints the statements. Remove the broad grant by
+hand, then grant as above:
+
+```sql
+-- MySQL
+REVOKE SELECT ON <my_schema>.* FROM 'rosie_readonly'@'%';
+-- PostgreSQL
+REVOKE SELECT ON ALL TABLES IN SCHEMA public FROM rosie_readonly;
+-- SQL Server
+REVOKE SELECT ON SCHEMA::dbo FROM rosie_readonly;
+ALTER ROLE db_datareader DROP MEMBER rosie_readonly;
+```
+
+The table-by-table grant also keeps Rosie's own tables out of reach: that is why Step 3 puts
+them in another database. A table created later is not readable until you grant it.
+
+A column privilege does not reach through a view, which reads with its owner's rights. If a
+view in the catalog selects a masked column, mask the view's column too, or leave the view
+out of the catalog.
+
+### Check what the read-only account can read
+
+To check by hand, connect as the read-only account and run, for each masked column:
+
+```sql
+SELECT email FROM customer WHERE 1 = 0;
+```
+
+It must fail with a permission error (MySQL 1142 or 1143, PostgreSQL 42501, SQL Server 229
+or 230), and an ordinary question on the same table must still work.
+
+Rosie runs the same check itself, as the read-only account on a new connection, at startup,
+with every permission check after (every 15 minutes) and, in the HTTP server, after every
+context reload (the MCP processes pick a reloaded context up at their next check). On PostgreSQL it also asks whether
+any role the account is a member of could read the column, including roles it can only
+switch to, and reports membership in `pg_read_all_data`. It also checks that the unmasked
+columns of each masked table are still readable, or questions on that table would fail. The
+result, per context:
+
+| Result | Meaning |
+|---|---|
+| `masked by the database` | Every masked column was refused by the database, and no role the account can become may read it. A statement that reaches one is refused by your database, whatever Rosie's own checks miss. The check does not see a view, a function or a copy of the column that the account can read: those still return its values |
+| `masked by Rosie only` | At least one masked column can be read by the account (directly, through a role it can become, or through any granted role on MySQL), or could not be verified (a mask the catalog does not list, a probe that failed for another reason). Only Rosie's validator stands between a statement and that column |
+| `not verified on SQL Server` | The check ran on SQL Server, but it has not been verified against a live SQL Server, so Rosie does not claim the database mode there. Check by hand |
+| `no masked columns` | The context masks nothing |
+| `not checked` | The check could not run, for example because the database could not be reached (the counts are then `0`), or has not run yet (the counts are then `null`). An unreachable database gives this result, not `masked by Rosie only`, and no per-column warning |
+
+`GET /api/assistant/health` (and `/health` of `npm run mcp:http`) is public, so it shows the
+result without column names:
+
+```json
+"columnGrants": [
+  { "projectId": "my-project", "mode": "rosie", "label": "masked by Rosie only",
+    "total": 4, "denied": 3, "readable": 1, "unverified": 0,
+    "checkedAt": "2026-11-17T09:00:00.000Z" }
+]
+```
+
+`total` is the number of masked columns, `denied` how many the database refused, `readable`
+how many the account can read, `unverified` how many could not be verified. The column names
+are shown in three places:
+
+- the server log, one warning per column, the first time and then only when the result
+  changes: `masked_column_readable` (with the role, when it is readable through one),
+  `masked_column_not_verified`, and `unmasked_columns_unreadable` when a grant is too narrow
+  for questions to work. The summary line is `column_grants_checked`
+  (`column_grants_not_checked` when it could not run);
+- `npm run doctor`, in the check "Masked columns denied by the database" (a warning, never a
+  failure);
+- `GET /api/assistant/admin/overview`, under `status.maskedColumns` (each readable column with
+  the roles that reach it, each unverified one with the reason), and the "Masked columns"
+  card of the console.
+
+Under column grants the database hides the masked columns from the account, so the
+schema-drift comparison cannot see them. `npm run doctor` reports them as "hidden by the
+database" and does not fail on them.
+
+When the database refuses a statement for lack of privilege, Rosie logs
+`db_permission_denied` as a security event, with the error's code and never its text. Under
+column grants this is usually a statement that reached a masked column and that Rosie's own
+check did not refuse.
+
+Rosie keeps answering whatever the result: it reports, it does not stop. The server does not
+issue `GRANT` or `REVOKE`. The check covers the read-only account only. `npm run init`,
+`npm run generate-catalog` and the engine pool use other credentials (`DB_USER`), which read
+whatever you granted them. It does not see views or functions that copy masked values, or
+what your unmasked columns reveal.
 
 ---
 
@@ -332,7 +456,8 @@ npm run check-context -- --context /path/to/my-rosie-context --base /path/to/pre
 > breaks valid questions** the model can't map.
 
 ### 4d. `masked-columns.json`
-PII columns the validator refuses to return (also blocks `SELECT *` on the table):
+PII columns the validator refuses to return (also blocks `SELECT *` on the table). Give the
+read-only account no privilege on them (Step 2), so the database refuses them too:
 ```json
 { "users": ["email", "national_id", "phone"] }
 ```
@@ -512,6 +637,8 @@ node -r dotenv/config test/eval/run.js              # real NL2SQL eval (costs LL
 Final checklist:
 - [ ] `health` and `project-info` OK; no `securityHold`.
 - [ ] Read-only user has SELECT only (Step 2) and cannot read the engine tables.
+- [ ] `health` reports `masked by the database` for every context with masked columns (Step 2,
+      "Check what the read-only account can read"); on SQL Server, checked by hand.
 - [ ] Engine tables created where `DB_ENGINE_DATABASE` points, grants in place (Step 3).
 - [ ] Catalog covers every table/column the target questions touch, and no table you meant
       to leave out.
@@ -535,6 +662,18 @@ Final checklist:
    Server: `ADD cross_check NVARCHAR(MAX) NULL`).
 3. **Check the grants** when the release adds a table (Step 3). 1.10.0 added
    `rosie_rate_limit`.
+
+   **Upgrading to 1.30.0.** No grant is changed by the upgrade. A read-only account with a
+   schema-wide grant (what `--create-ro-user` wrote before 1.30.0) can read the masked
+   columns: at the first start Rosie logs one `masked_column_readable` warning per masked
+   column, `/health` shows `masked by Rosie only` and the console's "Masked columns" card
+   turns red. That is the intended report, not a regression. Remove the broad grant and
+   grant table by table, with the statements in
+   [Step 2](#step-2-create-the-read-only-database-user-do-not-skip), then restart Rosie.
+   Running `--create-ro-user` again does not do it for you. Also run `npm run check-context`
+   (step 5): since 1.30.0 it fails on two mask keys that differ only by case, a key written
+   twice, a metric over a masked column and context text that writes a masked
+   `table.column`.
 4. **Restart every replica**, then run `npm run doctor`. A widget loaded from
    `/api/assistant/widget.js` follows the backend by itself; a copied one must be copied
    again (6b).

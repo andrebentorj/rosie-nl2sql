@@ -19,6 +19,13 @@ The container creates three things: the `Chinook` schema with the sample data, a
 user that can only SELECT from it, and a `rosie` schema holding the engine's own tables.
 The credentials in `docker-compose.yml` are demo values bound to the loopback interface.
 
+Since 1.30.0 `rosie_ro` is granted table by table, and on the tables with masked columns
+(`contexts/demo/masked-columns.json`) only the unmasked columns. `/health` should then show
+"masked by the database" for the demo context (on SQL Server, "not verified on SQL Server").
+The users are created only when a container starts on an empty volume: a demo volume created
+before 1.30.0 keeps the old schema-wide grant, and `/health` shows "masked by Rosie only".
+Recreate it with `docker compose -f demo/docker-compose.yml down -v`, then `up -d`.
+
 ## The context
 
 `contexts/demo/` is a complete, hand-written context for this schema and doubles as a worked
@@ -73,3 +80,6 @@ it is not part of the default `up -d`. Truth queries that need T-SQL carry a `sq
 variant. Details in `docs/SQLSERVER.md`.
 
 To reset the database: `docker compose -f demo/docker-compose.yml down -v`, then `up -d`.
+This is also how a demo created before 1.30.0 gets the column grants of `rosie_ro` (on SQL
+Server, run `./scripts/demo/setup-sqlserver.sh` again after `up -d`, since it stops when the
+data is already there).

@@ -1,7 +1,7 @@
 # Data and privacy
 
-What leaves your environment when someone asks Rosie a question, what never does, and how
-to run with nothing leaving at all.
+What leaves your environment when someone asks Rosie a question, what is kept out and by
+which layer, and how to run with nothing leaving at all.
 
 Rosie itself is software you run: the server, the database connections and the audit trail
 stay in your infrastructure. The one external party is the **model provider** configured in
@@ -13,7 +13,7 @@ stay in your infrastructure. The one external party is the **model provider** co
 |---|---|
 | The question | As typed by the user, after the length limit and the injection filter. |
 | Conversation history | The previous turns of the same conversation: at most 10 are accepted and sanitized again on every request, and the last 6 are sent. |
-| The previous answer, on a follow-up | When the request carries `previousAnswerHandle`: the SQL and the question of that answer, so the model starts from them. |
+| The previous answer, on a follow-up | When the request carries `previousAnswerHandle`: the SQL and the question of that answer, so the model starts from them. Since 1.30.0 only when that SQL still passes the validator against the current context. |
 | Your system prompt | The full text of `system-prompt.txt`. |
 | Schema metadata | Table names, descriptions and synonyms; names, type family and enum codes of the columns that are **not** masked; relationships; metric definitions. |
 | Column descriptions and code meanings | What the catalog says each unmasked column means, and the meaning of each enum code: when the model calls `describe_table`, and in every prompt with `AI_CATALOG_DESCRIPTIONS=true`. |
@@ -36,16 +36,32 @@ model provider your schema: table and column names, types, keys and relationship
 `--samples` it also sends sample values of unmasked columns, which gives better
 descriptions and enum codes; that is off by default. The columns it masks are left out of
 the samples. To write the test questions that must be refused, it also sends the provider
-the NAMES of the columns it has just masked (never a value). It runs once, at install time,
+the NAMES of the columns it has just masked, not their values. Up to 1.29.2, running it
+again after masking more columns could send values of those columns cached from the
+earlier run, and their old enum codes; since 1.30.0 masked columns are left out of the cache
+and the codes at every use. It reads with the credentials in `DB_USER`, not the read-only
+account, so column grants on the read-only account do not limit it. It runs at install time,
 with the key in `OPENAI_API_KEY`.
 
-## Never sent
+## Kept out of what is sent
 
-- **Masked columns.** Columns in `masked-columns.json` are absent from the schema metadata,
-  refused by the SQL validator, left out of `sample_rows` and refused by `lookup_values`.
-  Their values never reach the provider. Since 1.24.0 their names do not either: before
-  that version the `describe_table` tool returned the name, type and description of a
-  masked column when the model asked for its table. Two more paths were closed in 1.26.0,
+- **Masked columns.** Columns in `masked-columns.json` are absent from the schema metadata
+  Rosie writes, refused by the SQL validator when it finds them in a statement, left out of
+  `sample_rows` and refused by `lookup_values`. This is Rosie's own reading of SQL.
+  Independent reviews have found ways around it more than once, most recently in 1.29.2
+  (see the advisory in [SECURITY_OVERVIEW.md](SECURITY_OVERVIEW.md)), and the database
+  account can still read those columns unless you take the privilege away. With the
+  privilege taken away, a statement that reaches a masked column is refused by your
+  database, whatever Rosie's own checks miss, except through a view, a function or a copy of
+  the column that the account can read. Rosie checks this at startup and reports "masked by
+  the database" or "masked by Rosie only" in `/health`; on SQL Server it reports "not
+  verified on SQL Server", because the check has not been verified on a live server. Rosie's own description
+  of your schema does not name masked columns, their relationships, or metrics and examples
+  that read them. Text you write (the system prompt, descriptions, metric definitions,
+  examples) is sent as you wrote it. `npm run check-context` fails where that text writes a
+  masked `table.column` and warns where it contains the column's words; it cannot see a
+  paraphrase. Before 1.24.0 the `describe_table` tool returned the name, type and
+  description of a masked column when the model asked for its table. Two more paths were closed in 1.26.0,
   both found by independent reviews: a `JOIN ... USING (column)` on a masked column passed
   the validator in MySQL and PostgreSQL, which let a crafted statement compare a masked
   column and read its values back; and when a table listed `maskedColumns` of its own in the
@@ -56,17 +72,23 @@ with the key in `OPENAI_API_KEY`.
   double-quoted column name, and six forms of one alias used for two sources at different
   depths of a statement. They share a cause: the validator decided what a name means by
   the parser's rule, and the database decides by scope. Since 1.29.2 the validator resolves
-  names by scope itself. The stronger defence is in the database: give the read-only user
-  no privilege on the masked columns, so that a statement the validator misreads is refused
-  there. These were verified on MySQL 8.4 and PostgreSQL 16; SQL Server was checked by the
-  test battery only, not on a live server. If you ran an
-  earlier version with masked columns, see "Corrections" in
-  [SECURITY_OVERVIEW.md](SECURITY_OVERVIEW.md). Since 1.26.0 a relationship that ends on a
-  masked column and a masked primary key are not named to the model either, and an
-  explanation of an earlier answer is refused when its statement is no longer allowed.
+  names by scope itself. Two days later another review found more ways around it on
+  PostgreSQL (a double-quoted column inside some functions and operators, the operand of
+  `IS DISTINCT FROM`) and on every engine (aliases that differ only by letter case); those
+  were closed in 1.30.0. The 1.29.2 fixes were verified on MySQL 8.4 and PostgreSQL 16. The
+  1.29.2 release said they were also checked on SQL Server by the test battery; because of
+  a defect in the test, the battery ran those cases on the MySQL dialect only. They were run
+  on the PostgreSQL and SQL Server dialects later and hold. SQL Server has not been tested
+  on a live server. If you ran an earlier version with masked columns, see the advisory and
+  "Corrections" in [SECURITY_OVERVIEW.md](SECURITY_OVERVIEW.md). Since 1.26.0 a
+  relationship that ends on a masked column and a masked primary key are not named to the
+  model either, and an explanation of an earlier answer is refused when its statement is no
+  longer allowed; since 1.30.0 the same holds for the previous answer of a follow-up.
   Masking is the control for personal data: list every column that holds it, and take the
-  `SELECT` privilege on those columns away from the read-only user where your database
-  allows it ([INSTALL.md](INSTALL.md)), so that the mask does not rest on Rosie alone. `npm run generate-catalog` prints the column names
+  `SELECT` privilege on those columns away from the read-only account
+  ([INSTALL.md](INSTALL.md), Step 2), so that the mask does not rest on Rosie alone. Column
+  privileges do not reach through a view, which reads with its owner's rights: mask the
+  view's column too, or leave the view out of the catalog. `npm run generate-catalog` prints the column names
   that look like personal data and are not masked.
 - **Rows outside the caller's policy.** With [row policies](ROW_POLICIES.md), every read is
   filtered by the caller's verified identity before it runs, so the sample sent to the
@@ -113,7 +135,8 @@ Two cautions, stated plainly:
 - **The safety layers do not depend on the model.** The SQL validator, the table and column
   allowlist, masking, row policies and the Answer Certificate are deterministic code that
   runs in your server whatever model is behind `AI_BASE_URL`. A weaker model produces more
-  refusals and more flagged answers, not more leaks.
+  refusals and more flagged answers. What the validator misses does not depend on the
+  model; the database's column privileges cover that.
 
 Self-hosted endpoints have not been part of the automated test suite of this repository;
 `test:provider` is the check to run on yours.
@@ -126,7 +149,8 @@ Self-hosted endpoints have not been part of the automated test suite of this rep
 | `rosie_answer_certificate` | The certificate of each answer that carried one. | Same. |
 | `rosie_feedback` | Thumbs up or down, with the question and SQL. | Same. |
 | `rosie_rate_limit` | Only with `ROSIE_RATE_LIMIT_STORE=database`: one counter per client address and window. Removed by the engine about two windows later (two days for the daily quota). | Same. |
-| Audit file | The same audit records as newline-delimited JSON, as a fallback when the database is down. | `ROSIE_AUDIT_FILE` (default `logs/`). |
+| Audit file | The same audit records as newline-delimited JSON, as a fallback when the database is down. Since 1.30.0 it also lists the statements the model ran for a question with `execute_query`, refused ones included, up to 20 (`sql_trace`), with their literal values. | `ROSIE_AUDIT_FILE` (default `logs/`). |
+| Process log (stdout) | Events of each request. SQL text and database error text only at `LOG_LEVEL=debug` (up to 1.29.2 database error text was logged at error level, and it can quote a stored value). | Wherever you ship stdout. |
 
 Result rows are not stored by Rosie. The certificate of an answer is, and it holds figures and a few values: the totals of the second derivation, and where a filter value was not found, up to eight real values of that (unmasked) column. Retention of these tables is yours to set, and nothing
 is removed unless you schedule it:
@@ -139,3 +163,7 @@ npm run retention -- --days 365 --confirm     # remove them from the three log t
 The command touches only `rosie_audit_log`, `rosie_answer_certificate` and `rosie_feedback`,
 and the account that runs it needs DELETE on them (`docs/INSTALL.md`, Step 3). The audit file is not rotated by Rosie; use
 your log tooling for it.
+
+A mask applies from the reload on. Records already written keep the question, statement and
+certificate they had; Rosie does not rewrite its trail. To remove them, use
+`npm run retention` or your own procedure.

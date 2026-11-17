@@ -26,8 +26,10 @@ the caller's identity goes.
 Keys that start with `_` or `$` (`_comment`, `$schema`) are ignored. A predicate may combine
 comparisons with `AND`, `OR`, `IN`, `IS NULL` and literals. It may
 not call functions, contain a subquery or name a column of another table. A policy that
-breaks these rules, names a table or column that is not in the catalog, or uses no claim at
-all stops the server at startup.
+breaks these rules, names a table or column that is not in the catalog, uses a masked
+column, or uses no claim at all stops the server at startup (since 1.30.0; before, only a
+policy on an unknown table did, and the other errors stopped the first question on that
+table).
 
 ## How it is enforced
 
@@ -39,11 +41,14 @@ derived table that is already filtered:
 SELECT c.name, SUM(o.total) FROM orders o JOIN customers c ON c.id = o.customer_id GROUP BY c.name
 
 -- what the database receives for a caller whose tenant_id is acme
+-- (customers.email is masked, so it is not in the filtered read)
 SELECT c.name, SUM(o.total)
-FROM (SELECT * FROM orders WHERE tenant_id = 'acme') AS o
-JOIN (SELECT * FROM customers WHERE tenant_id = 'acme') AS c ON c.id = o.customer_id
+FROM (SELECT id, tenant_id, customer_id, total FROM orders WHERE tenant_id = 'acme') AS o
+JOIN (SELECT id, tenant_id, name FROM customers WHERE tenant_id = 'acme') AS c ON c.id = o.customer_id
 GROUP BY c.name
 ```
+
+The filtered read names the table's unmasked catalog columns (quoted as the engine needs).
 
 This happens at every depth: joins, self-joins, subqueries in any clause, derived tables and
 CTE bodies. There is no syntax inside a SELECT that reaches the table behind a derived table,
@@ -54,6 +59,13 @@ The same path serves everything that reads data: `execute_query`, `sample_rows`,
 `lookup_values`, `validate_query`, CSV and MCP exports, and the probes of the Answer
 Certificate. A certificate therefore verifies a number against the caller's rows, never
 against the whole table.
+
+Since 1.30.0 the rewritten statement is passed through the validator a second time. In this
+release that second check is logged, not enforced: a statement it refuses still runs, and
+the server logs a `policy_rewrite_revalidation_failed` warning with `security: true`. Two
+known cases produce it on correct statements: a `WITH` inside the count wrapper, and a
+restricted table written in another letter case than the catalog's (`FROM ORDERS` for
+`orders`).
 
 ## Fail closed
 
@@ -75,7 +87,11 @@ Numbers are written as numbers and booleans as booleans. A list is accepted only
 - **Not a replacement for database security.** On PostgreSQL, native row-level security is a
   good second layer under this one. On any engine, the read-only user should not have access
   to tables that no user of Rosie may read.
-- **Not column security.** Use `masked-columns.json` for that.
+- **Not column security.** Use `masked-columns.json` for that, and column grants on the
+  read-only user. A policy may not use a masked column; to filter on a key the model must not
+  see, use the database's own row-level security. The filtered read names the table's
+  unmasked columns, never `*`, so it runs under a read-only user without privileges on the
+  masked columns (since 1.30.0; before, it was `SELECT *` and failed under column grants).
 - **Not applied to the catalog.** Table and column names, descriptions and enum codes are
   the same for every caller. So are the notes of the column profile
   (`npm run profile-columns`), which are read from every row of a table: a note such as

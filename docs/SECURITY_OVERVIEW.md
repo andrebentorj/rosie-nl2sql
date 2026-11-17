@@ -44,15 +44,17 @@ nothing is sent to the vendor of Rosie, and there is no licence server to call.
 |---|---|
 | Can Rosie change data? | No. Statements are parsed and only a single `SELECT` passes. The connection uses a database user that has `SELECT` and nothing else, and Rosie checks that user's privileges at startup and every 15 minutes. If it finds more than `SELECT`, every question is refused until it is fixed |
 | Which tables and columns can it read? | Only those in the catalog file. A statement that names anything else is rejected before it runs. Leaving a table out of the catalog keeps it out of reach |
-| How is personal data protected? | Columns listed in `masked-columns.json` cannot be selected, filtered on, sampled or looked up, and are not described to the model. Since 1.24.0 that holds for every path: before it, the `describe_table` tool returned the name, type and description of a masked column to the model when the model asked for the table (never a value). Two further paths were closed in 1.26.0, see "Corrections" below |
-| Can a user see another tenant's rows? | Not with [row policies](ROW_POLICIES.md): a filter derived from the caller's verified identity is added to every read, including approved queries and compiled metrics |
+| How is personal data protected? | In two layers. Rosie: columns listed in `masked-columns.json` are refused when Rosie finds them in a statement, and are not sampled, looked up or described to the model. This is Rosie's own reading of SQL, and independent reviews have found ways around it more than once (see "Corrections" and the advisory below). The database: give the read-only account no privilege on the masked columns ([INSTALL.md](INSTALL.md), Step 2), and a statement that reaches one is refused by your database, whatever Rosie's own checks miss. At startup Rosie tries to read each masked column as that account and reports, per context, "masked by the database" when every one is denied and "masked by Rosie only" when one can be read ([How to read the check](INSTALL.md#check-what-the-read-only-account-can-read)). On SQL Server the check has not been verified against a live server and is reported as not verified. Rosie does not stop answering on this result yet. Outside both layers: views and functions that copy masked values, copies in other columns, and what your unmasked columns reveal |
+| Can a user see another tenant's rows? | Not with [row policies](ROW_POLICIES.md): a filter derived from the caller's verified identity is added to every read, including approved queries and compiled metrics. The filtered read names the table's unmasked columns, never `*`, so it also runs under column grants. A policy may not use a masked column |
 | What stops a runaway query? | A statement timeout enforced on the connection (default 10 s), a cap of 500 rows per answer, at most 5 queries per question, and a response size limit |
 | What about SQL injection? | The user never supplies SQL; a question that starts with a SQL statement is refused. The model's SQL is treated as untrusted input: parsed to a syntax tree, checked against the allowlist, with set operations (all but `UNION ALL` inside a derived table, where each branch is validated on its own and filtered by the row policies), system schemas, file access, session variables and information functions rejected. Values in approved queries are typed and bound, never concatenated |
 | And prompt injection? | A filter refuses known injection patterns before the model is called. Data returned by tools is marked as data for the model. Neither is the control that matters: whatever the model is talked into writing still has to pass the validator and run as a `SELECT`-only user |
 | Is the connection encrypted? | With `DB_SSL=true`, TLS with certificate verification on MySQL, PostgreSQL and SQL Server |
 
 The validator has its own regression suite of adversarial statements (more than 850 cases),
-run on every commit and before every release. `npm run test:security` prints the count.
+run on every commit and before every release. `npm run test:security` prints the count. A
+suite checks the shapes someone thought of; independent reviews have found new ones after
+it passed, which is why the database grant matters.
 
 ## Authentication and authorization
 
@@ -71,8 +73,10 @@ run on every commit and before every release. `npm run test:security` prints the
 Only what is sent to the model provider you configured, itemised in
 [DATA_PRIVACY.md](DATA_PRIVACY.md): the question, schema metadata of unmasked columns (with
 their descriptions, and the data notes when the catalog carries them), and a sample of up to
-30 result rows per query so the model can write the answer. Masked columns and rows outside
-the caller's policy are never part of it. Pointing `AI_BASE_URL`
+30 result rows per query so the model can write the answer. Rows outside the caller's policy
+are not part of it. Masked columns are not part of it when Rosie's validator finds them in a
+statement, and, for what it misses, when the read-only account has no privilege on them
+(see "How is personal data protected?"). Pointing `AI_BASE_URL`
 at a model you host makes that nothing.
 
 Rosie makes no other outbound call. There is no telemetry to the vendor, no update check
@@ -87,7 +91,7 @@ and no licence check.
 | Can the trail lose a record? | Under the conditions listed here, yes, and each one is reported. Each record is written to a local append-only file first, with a synchronous write that completes before the answer is sent, then to the database, with retries. When that file write succeeds, a crash of the server loses nothing, and with `ROSIE_AUDIT_FSYNC=true` neither does a crash of the host. The file survives a replaced container only when its directory is a mounted volume, which the installation steps do and `npm run doctor` checks. It survives log rotation: the file is opened again at its path when it was renamed or removed. A record is lost only if the file write fails (a full disk) **and** the process dies before the database insert completes; the failed write is counted on `/health` from that moment. A row the database refuses for what it holds is not retried and is counted (`rejectedRows`); the file has it. The table keeps 500 characters of a question, the file keeps all of it. An administrative change is refused unless its attempt was first written to the file. `GET /health` and the `rosie_audit_sink_healthy` metric report a failing sink. With `ROSIE_AUDIT_POLICY=fail-closed`, Rosie refuses to answer while nothing can record |
 | Are result rows stored? | No |
 | Retention? | You set it. `npm run retention -- --days 365` reports what is older than the period, and with `--confirm` removes it from the three log tables (`rosie_audit_log`, `rosie_answer_certificate`, `rosie_feedback`). Nothing is removed unless you schedule that command. The account that runs it needs DELETE on those tables, which the account of the server does not need (`docs/INSTALL.md`, Step 3). The fourth table, `rosie_rate_limit`, holds client addresses for about two windows and is cleaned by the engine |
-| What is in application logs? | Structured events with identifiers and reasons. Database error text and privilege details stay in the server log and are not returned to callers |
+| What is in application logs? | Structured events with identifiers and reasons. Privilege details stay in the server log and are not returned to callers. A database error is logged by its class and code; its text, which can quote a stored value, is logged only at `LOG_LEVEL=debug` (since 1.30.0; before, at error level) |
 
 ```cron
 0 4 * * 0  docker run --rm --env-file /opt/rosie/.env <image> npm run -s retention -- --days 365 --confirm
@@ -135,7 +139,7 @@ verified.
 | How do I monitor it? | Prometheus metrics of the HTTP server and suggested alerts in [MONITORING.md](MONITORING.md) |
 | How do I change the catalog safely? | Reload without restart, all or nothing ([OPERATIONS.md](OPERATIONS.md)) |
 | What if the database schema changes? | The HTTP server detects it, logs it and counts it, and approved queries that depend on what changed are suspended ([OPERATIONS.md](OPERATIONS.md)). The MCP processes do not run that check |
-| How do I revoke access? | Rotate `ROSIE_API_TOKEN`, or revoke the user at your identity provider. Rotating `ROSIE_HANDLE_SECRET` invalidates every outstanding handle. Both need a restart of every replica; the steps are in [OPERATIONS.md](OPERATIONS.md), "Rotating a secret". Remove the customer from the registry to stop new versions |
+| How do I revoke access? | Rotate `ROSIE_API_TOKEN`, or revoke the user at your identity provider. Rotating `ROSIE_HANDLE_SECRET` invalidates every outstanding handle. Both need a restart of every replica; the steps are in [OPERATIONS.md](OPERATIONS.md), "Rotating a secret". Remove the customer from the registry to stop new versions. Masking a column takes effect at the next reload, for the next question; a question already running finishes under the old rules, and nothing already sent to the provider or stored in the audit trail, logs or exported files is undone. When a mask is urgent, take the column's privilege in the database first |
 | How do I know answers are right? | The certificate shows what was checked on each answer and what was not ([CERTIFICATE.md](CERTIFICATE.md)). `npm run evaluate` measures accuracy on your own questions ([EVALUATION.md](EVALUATION.md)) |
 
 ## Vulnerabilities
@@ -143,13 +147,105 @@ verified.
 Report privately to the vendor contact in your agreement. A confirmed finding in the
 validator is fixed together with a regression case in the security suite. See `SECURITY.md`.
 
+## Advisory: masked columns in 1.29.2 and earlier
+
+**Rosie 1.29.2 and earlier: masked columns can be read or filtered on. Act now: upgrade to
+1.30.0 and take the privileges away in the database. Upgrading alone is not enough.**
+
+**What is wrong.** Rosie's validator can miss a masked column in a statement. Confirmed on
+PostgreSQL: a double-quoted masked column inside `SUBSTRING`, `POSITION`, `STRING_AGG`,
+`LIKE`, `ILIKE`, `SIMILAR TO`, `ESCAPE`, `~`, `~*` or `AT TIME ZONE`; any masked column after
+`IS DISTINCT FROM`; and statements that use two table aliases differing only by letter case.
+Confirmed on MySQL (case-sensitive table names, the Linux default) and on PostgreSQL: aliases
+that differ only by case or by a look-alike letter, when another table has an unmasked column
+of the same name. MySQL servers running with `ANSI_QUOTES` have the first problem too. SQL
+Server was not tested on a live server. Separately: if `masked-columns.json` (or
+`maskedColumns` in the catalog) names one table under two spellings that differ only by
+case, only the first entry is applied. 1.30.0 closes each of these in the validator and the
+mask files (see "Corrections"), but the same kind of defect has been found in four review
+rounds in a row, so do not rely on the validator alone.
+
+**Who can reach it.** Anyone who can ask questions, through the statements the model writes,
+and directly any caller of `/certify` or `certify_sql` where `ROSIE_CERTIFY_SQL=true`. Values
+can reach the caller, the model provider, exports, and the process log (database error
+messages quote values).
+
+**What to do.**
+
+1. Take the masked columns away in the database. PostgreSQL: no table-level `SELECT` on a
+   table that has masked columns; grant `SELECT (col, ...)` for the unmasked columns only. A
+   column `REVOKE` under a table grant changes nothing. Check PUBLIC grants, membership in
+   `pg_read_all_data`, and the roles the account can switch to. MySQL: no
+   `GRANT SELECT ON db.*`; grant table by table, and column by column on masked tables. A
+   narrower grant does not remove a broader one. Restart Rosie afterwards. SQL Server: grant
+   columns, no `db_datareader`, no schema-wide grant. The statements are in
+   [INSTALL.md](INSTALL.md), Step 2, [POSTGRES.md](POSTGRES.md) and
+   [SQLSERVER.md](SQLSERVER.md).
+2. Check it. As the read-only account, `SELECT <masked column> FROM <table> WHERE 1 = 0` must
+   fail with a permission error. From 1.30.0 Rosie runs this check at startup and shows the
+   result in `/health` ([INSTALL.md](INSTALL.md#check-what-the-read-only-account-can-read)).
+3. Row policies. In 1.29.2 a table with both a row policy and a masked column cannot be read
+   under column grants (the policy filter reads the table with `SELECT *`). 1.30.0 names the
+   unmasked columns instead. If you cannot upgrade yet, remove the policy on those tables and
+   restrict them by other means.
+4. Set `ROSIE_CERTIFY_SQL=false` unless you need it.
+5. Look at your mask files for one table written twice with different letter case, and merge
+   the entries. From 1.30.0 both entries apply, and `npm run check-context` reports the
+   duplicate.
+6. On 1.29.2, before running `npm run init` again after adding masks: delete
+   `.bootstrap/samples.json` and remove `enumValues` from the newly masked columns in
+   `schema-catalog.json`. Otherwise old values of those columns are sent to the provider
+   again. 1.30.0 leaves masked columns out of both at every use.
+7. Remove masked column names from `system-prompt.txt`, descriptions and metric definitions.
+   That text is sent with every request. The demo context of 1.29.2 has this defect. From
+   1.30.0 `npm run check-context` fails where that text writes a masked `table.column` and
+   warns where it contains the column's words; it cannot see a paraphrase.
+8. Views: a view that selects a masked column is not covered by the mask or by a column grant
+   on the base table. Mask the view's column too, or leave the view out of the catalog.
+
+**What to look for.** In `rosie_audit_log.sql_generated`, on PostgreSQL: `SUBSTRING("`,
+`POSITION("`, `LIKE "`, `ESCAPE "`, `~ "`, `AT TIME ZONE "`, `STRING_AGG(` with a
+double-quoted second argument, and `IS DISTINCT FROM` followed by a masked column. On any
+engine: a statement with two aliases that differ only by case, or with a non-ASCII letter in
+an alias. In process logs: `execution_error`, `count_query_failed`, `export_error` lines
+whose `error` quotes a value. In `rosie_audit_log.error_message` where
+`status = 'export_error'`.
+
+**What these searches cannot tell you.** The audit row holds the final statement of each
+answer. Statements the model ran before it, whose rows also went to the provider, are not
+recorded (from 1.30.0 the audit file lists, under `sql_trace`, the statements the model ran
+with `execute_query`, up to 20 per question). A search that finds
+nothing does not show that nothing happened. Upgrading does not undo anything already sent
+or stored.
+
 ## Corrections
 
 Defects in what this page promises, with the version that closed them. All were found by
 independent reviews of the source, none from a report of use.
 
+The searches below read the statement of each answer. Statements the model ran to explore,
+whose rows also went to the provider, are not in `rosie_audit_log`; since 1.30.0 the audit
+file lists, under `sql_trace`, the statements the model ran for a question with
+`execute_query`, refused ones included, up to 20. A search that finds nothing does
+not show that nothing happened.
+
+The 1.29.2 release said its scope fixes were checked on SQL Server by the test battery. That
+was not true: because of a defect in the test, the battery ran its 1.29.2 scope cases on the
+MySQL dialect three times, and never on the PostgreSQL and SQL Server dialects. They were run
+on those dialects later and hold. SQL Server has not been tested on a live server.
+
 | Closed in | What was wrong | Who could reach it | What to check if you ran it |
 |---|---|---|---|
+| 1.30.0 | PostgreSQL: a double-quoted masked column in some positions (`SUBSTRING`, `POSITION`, `STRING_AGG`, `LIKE`, `ILIKE`, `SIMILAR TO`, `ESCAPE`, `~`, `~*`, `AT TIME ZONE`) was read by the validator as text and by the server as a column, so a statement could return a masked value or filter on one. The same on MySQL servers running with `ANSI_QUOTES`. Each MySQL read-only session now removes `ANSI_QUOTES`, `NO_BACKSLASH_ESCAPES`, `PIPES_AS_CONCAT` and `ANSI` from its own SQL mode and refuses to run if it cannot | A statement written by the model (so a user able to steer it past the question filters), and directly, with no model, `POST /certify` and the MCP tool `certify_sql` when `ROSIE_CERTIFY_SQL=true` | PostgreSQL, and MySQL with `ANSI_QUOTES`: search `rosie_audit_log.sql_generated` for `SUBSTRING("`, `POSITION("`, `LIKE "`, `ILIKE "`, `SIMILAR TO "`, `ESCAPE "`, `~ "`, `~* "`, `AT TIME ZONE "`, and `STRING_AGG(` with a double-quoted second argument. The search cannot show statements the model ran before its answer |
+| 1.30.0 | PostgreSQL: the operand after `IS DISTINCT FROM` was not checked at all, bare, quoted or qualified. A statement could test whether a masked column holds a guessed value, row by row, or whether two columns are equal. MySQL and SQL Server refuse the form. Since 1.30.0 PostgreSQL refuses it too; write `=`, `<>`, `IS NULL` or `COALESCE` instead | Same as above | PostgreSQL: search `rosie_audit_log.sql_generated` for `IS DISTINCT FROM` followed by the name of a masked column. The search cannot show statements the model ran before its answer |
+| 1.30.0 | Table aliases were compared after converting them to upper case, while the database compares them its own way: case-sensitive table names on MySQL (the Linux default), and on all engines letters such as `ı`, `ſ` and `ß`. Two aliases that differ only by case or by such a letter could make the validator check a column against an unmasked table of the statement while the database read the masked one. On PostgreSQL the statement as emitted could also move a name to another source. Two table names or aliases in one statement that differ only by letter case, by an accent or by a look-alike letter (`customer` and `Customer`, `ano` and `año`) are now refused, including one table written in two cases with no alias. Names in other alphabets or with accents are accepted when no other name in the statement folds to the same name (`vendas_mês`, `ação`, `"Top Artists"`) | Same as above, when another table of the catalog has an unmasked column with the masked column's name | Search `rosie_audit_log.sql_generated` for statements with two aliases that differ only by letter case, or with a non-ASCII letter in an alias. The search cannot show statements the model ran before its answer |
+| 1.30.0 | When a mask file, or `maskedColumns` in the catalog, named one table under two spellings that differ only by case, only the first entry was applied: the columns of the other were readable and named in the prompt. `npm run init` and the server read the same file differently | Any question, in a context with such a duplicate. A context written only by `npm run init` was not affected | Whether any table appears twice, with different letter case, in `masked-columns.json` or in the catalog's `maskedColumns`. If one did, search `rosie_audit_log.sql_generated` for the columns of the entry that was ignored. The search cannot show statements the model ran before its answer, or what the prompt named |
+| 1.30.0 | The text of a database error was written to the process log at error level, and to `rosie_audit_log.error_message` for failed exports. PostgreSQL, MySQL and SQL Server quote the failing value in conversion and time-zone errors, so a statement that reached a masked column (rows above) could leave its value there, even when the model was only told the query failed. Database errors are now logged by class and code; the text only at `LOG_LEVEL=debug` | Anyone who could make a statement fail on a value; the log and the trail are read by operators | Process logs: lines with `"event":"execution_error"`, `count_query_failed`, `export_error`, `mcp_export_failed`, `explain_error` or `cross_check_unavailable` whose `error` holds a value (`invalid input syntax for type`, `time zone "`, `Conversion failed when converting`, an `@`). `rosie_audit_log.error_message` where `status = 'export_error'`. Logs you did not keep cannot be searched |
+| 1.30.0 | `npm run init`, run again after a column was masked, sent the provider sample values of that column cached from the earlier run (`.bootstrap/samples.json`), and its old `enumValues` (and a native `enum(...)` type) from the catalog | The operator running the wizard; the values went to the model provider configured for it, which had received them once before, with consent, before the mask | Whether you ran `npm run init` again after adding a mask, with `--samples` or with `enumValues` on that column. The retained records cannot show whether this happened |
+| 1.30.0 | Metric definitions that name a masked column were sent in every prompt and returned by the MCP tool `list_metrics`. Text you write (the system prompt, descriptions, examples) that names a masked column is sent as written; the demo context of 1.29.2 did this. Names only, never values. Metrics over a masked column are now withheld with a warning, and `npm run check-context` fails where your text writes a masked `table.column` | Any question, and any MCP client allowed to list metrics | Whether `system-prompt.txt`, `metrics`, descriptions or examples in your context name a masked column; if they did, every request sent that name. The retained records cannot show it |
+| 1.30.0 | A row policy could use a masked column, and the filtered read of a restricted table was `SELECT * FROM <table>`, which a read-only account without privilege on the masked columns cannot run. The compared value was always the caller's own verified claim, so no value could be read back. A policy over a masked column now stops the startup, and the filtered read names the unmasked columns | Operators whose `row-policies.json` names a masked column; for the `*`, every installation with row policies and column privileges | Whether any predicate in `row-policies.json` names a column of `masked-columns.json`. With column privileges: `rosie_audit_log` rows with `status = 'error'` on restricted tables |
+| 1.30.0 | A follow-up with `previousAnswerHandle` (HTTP, or MCP `ask_data`) sent the earlier statement and question to the provider without validating them again, so a column masked after that answer was named again for up to 15 minutes. It is now dropped when it no longer passes | The caller who held the handle, within 15 minutes of the change | What was sent was a statement that caller had already been shown. The retained records cannot show whether this happened |
+| 1.30.0 | `validate_query` returned the database's plan and its raw error text to the model, and `sample_rows` and `lookup_values` their raw error text. A plan names index names and, for a view, the columns and filters of its definition. The plan is no longer returned | A statement written by the model | The retained records cannot show whether this happened: tool results are not stored |
 | 1.29.2 | A select-list alias with the name of a column made the validator skip that name everywhere in the statement, so `SELECT email AS email FROM users` returned a masked column, and `WHERE email LIKE 'a%' AND 1 = (SELECT 1 AS email)` filtered on one. The same skipped the column allowlist for a column that is in no catalog. All three databases | A statement written by the model (so a user able to steer it past the question filters), and directly, with no model, `POST /certify` and the MCP tool `certify_sql` when `ROSIE_CERTIFY_SQL=true` | Search `rosie_audit_log.sql_generated` for ` AS ` followed by the name of a masked column |
 | 1.29.2 | One alias used for two sources at different depths (`FROM users u, (SELECT 1 FROM c u) q`) made the validator check `u.email` against the inner source instead of `users`, and when that source was no catalog table nothing was checked. All three databases. Names are now resolved by scope, as the database does | A statement written by the model (so a user able to steer it past the question filters), and directly, with no model, `POST /certify` and the MCP tool `certify_sql` when `ROSIE_CERTIFY_SQL=true` | Search `rosie_audit_log.sql_generated` for statements where the same alias follows two different table names |
 | 1.29.2 | Four more places where the validator took a name to mean one source and the database another, all through an alias used again in an inner query: a derived table reading the outer query when a neighbour in its FROM has the same alias; an `ON` clause naming a source joined after it or written before a comma; a join in parentheses (MySQL); and a later branch of a `UNION ALL`. Each could return, or filter on, a masked column of the outer table, most of them only when another table has an unmasked column of the same name. Joins in parentheses are now refused | A statement written by the model (so a user able to steer it past the question filters), and directly, with no model, `POST /certify` and the MCP tool `certify_sql` when `ROSIE_CERTIFY_SQL=true` | Search `rosie_audit_log.sql_generated` for statements where the same alias follows two different table names |
@@ -158,14 +254,21 @@ independent reviews of the source, none from a report of use.
 | 1.29.2 | On SQL Server a double-quoted word was read by the validator as text and by the server as a column, so `SELECT "password" FROM users` passed every column check. Double-quoted words are now refused on SQL Server | A statement written by the model (so a user able to steer it past the question filters), and directly, with no model, `POST /certify` and the MCP tool `certify_sql` when `ROSIE_CERTIFY_SQL=true` | Search `rosie_audit_log.sql_generated` for a double quote, on SQL Server installations |
 | 1.26.0 | `JOIN ... USING (column)` on a masked column passed the validator (MySQL and PostgreSQL; SQL Server has no `USING`). A statement joining a table to a derived table that renames another column to the masked name returned the masked values that matched, to the caller and to the model provider | A statement written by the model (so a user able to steer it past the question filters), and directly, with no model, `POST /certify` and the MCP tool `certify_sql` when `ROSIE_CERTIFY_SQL=true` | Search `rosie_audit_log.sql_generated` for `USING (` followed by the name of a masked column |
 | 1.26.0 | When a table carried a `maskedColumns` list of its own in `schema-catalog.json`, the columns listed for that table in `masked-columns.json` (and in the catalog's root `maskedColumns`) were ignored: they were named in the prompt and could be queried | Any question, in a context that masks the same table in two places. A context that uses only `masked-columns.json`, which is what `npm run init` writes, was not affected | Whether any table of your `schema-catalog.json` has its own `maskedColumns` |
-| 1.26.0 | A relationship that ends on a masked column, and a masked primary key, were named to the model (names, never values) | Any question | Nothing to check |
-| 1.26.0 | `/explain` and the MCP tool `explain_answer` sent the statement of an earlier answer to the provider without validating it again, so a column masked after the answer could still be named for up to 15 minutes | A caller holding an answer handle signed before the change | Nothing to check |
-| 1.24.0 | `describe_table` returned the name, type and description of a masked column | Any question | Nothing to check |
+| 1.26.0 | A relationship that ends on a masked column, and a masked primary key, were named to the model (names, never values) | Any question | The retained records cannot show whether this happened |
+| 1.26.0 | `/explain` and the MCP tool `explain_answer` sent the statement of an earlier answer to the provider without validating it again, so a column masked after the answer could still be named for up to 15 minutes | A caller holding an answer handle signed before the change | The retained records cannot show whether this happened |
+| 1.24.0 | `describe_table` returned the name, type and description of a masked column | Any question | The retained records cannot show whether this happened |
 
 ## Not built, stated plainly
 
 - **No certification.** There is no SOC 2 or ISO 27001 report, and no penetration test by a
   third party yet. The security suite and its results are available on request.
+- **The column check reports, it does not stop.** When the read-only account can read a
+  masked column, Rosie logs a warning and reports "masked by Rosie only", and keeps
+  answering. The server never issues `GRANT` or `REVOKE`; only `npm run init -- --create-ro-user`
+  grants, once, when you ask it to. It does not see through views or
+  functions that copy masked values, and on SQL Server the check has not been verified on a
+  live server.
+- **MariaDB is not supported.**
 - **Shared rate limits are opt-in.** With `ROSIE_RATE_LIMIT_STORE=database` the hourly and
   daily quotas of the HTTP routes and of the MCP transport are one number for every replica,
   kept in the engine database. Without it each replica counts separately. The concurrency

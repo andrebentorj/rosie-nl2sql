@@ -333,8 +333,8 @@ another statement and the certificate does not rate that one lower.
   `firstSql` when the answer was replaced). **It never changes the certificate's verdict**,
   and it is an opinion: show `reading` as how the question was read, not as a finding.
 - The values the reviewer sees go through the validator and the row policies of the
-  request, so it reads nothing the caller could not have asked for. Masked columns are
-  neither read nor listed.
+  request, so it reads nothing the caller could not have asked for. It never picks a masked
+  column to list, and a statement with one is refused by the validator as anywhere else.
 - It does not run on an approved query (a person read that one) or on a compiled metric, nor
   on an answer the certificate already sent back for a second attempt.
 - It costs one model call per answer, on `AI_QUESTION_REVIEW_MODEL` when set, and a second

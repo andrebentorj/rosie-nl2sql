@@ -1,6 +1,6 @@
 # SQL Server
 
-Rosie runs on Microsoft SQL Server as well as MySQL, MariaDB and PostgreSQL. The engine is
+Rosie runs on Microsoft SQL Server as well as MySQL and PostgreSQL. The engine is
 selected with one variable; everything else (context directory, widget, MCP server, Answer
 Certificate, row policies, eval harness) is the same.
 
@@ -69,8 +69,39 @@ login also needs to read its metadata there, or run those commands with another 
 CREATE LOGIN rosie_readonly WITH PASSWORD = '...';
 USE Sales;
 CREATE USER rosie_readonly FOR LOGIN rosie_readonly;
-GRANT SELECT ON SCHEMA::dbo TO rosie_readonly;
+-- A table with no masked column: the whole table.
+GRANT SELECT ON OBJECT::dbo.Invoice TO rosie_readonly;
+GRANT SELECT ON OBJECT::dbo.InvoiceLine TO rosie_readonly;
+-- A table with masked columns: its unmasked columns only.
+GRANT SELECT ON OBJECT::dbo.Customer (CustomerId, FirstName, LastName, City, Country) TO rosie_readonly;
 ```
+
+Grant table by table, and column by column on the tables that have masked columns. Do not
+use `GRANT SELECT ON SCHEMA::dbo` or the `db_datareader` role: both cover every column of
+every table, and a narrower grant does not remove a broader one. Why this matters is in
+[INSTALL.md](INSTALL.md), Step 2.
+
+A login created before 1.30.0 by `npm run init -- --create-ro-user` has
+`GRANT SELECT ON SCHEMA::dbo`, and one created by hand may be in `db_datareader`. Take both
+away first, then grant as above:
+
+```sql
+REVOKE SELECT ON SCHEMA::dbo FROM rosie_readonly;
+ALTER ROLE db_datareader DROP MEMBER rosie_readonly;
+```
+
+Running `--create-ro-user` again does not do this. It grants nothing to a read-only user you
+named as existing, and when `rosie_readonly` already exists its `CREATE LOGIN` fails and the
+wizard only prints the statements. Then check, as `rosie_readonly`:
+`SELECT Email FROM dbo.Customer WHERE 1 = 0;` must fail with error 230 (permission denied
+on the column).
+
+Rosie runs the same check at startup and every 15 minutes, and asks whether the user is in
+`db_datareader`. It has not been verified against a live SQL Server, so on SQL Server it
+reports `not verified on SQL Server` whatever it finds, never `masked by the database`.
+Check by hand. A column permission does not reach through a view whose owner also owns the
+table (ownership chaining): mask the view's column too, or leave the view out of the
+catalog. Dynamic Data Masking is not counted as a column grant.
 
 At startup, and every 15 minutes after, Rosie checks this login and refuses to answer
 (`securityHold`) if it finds any of:
@@ -144,8 +175,9 @@ T-SQL (`TOP`, `YEAR()`, `DATEPART`, `DATEFROMPARTS`). Results are in `docs/BENCH
 ## Limits
 
 - One schema per deployment.
-- `validate_query` validates a statement but returns no execution plan on SQL Server: asking
-  for a plan needs a permission the read-only login must not have.
+- `validate_query` says whether a statement is valid; it returns no plan on any engine (since
+  1.30.0). On SQL Server it does not ask for one: that needs a permission the read-only login
+  must not have.
 - The function allowlist is fixed in code; there is no configuration to extend it yet.
 - Driver types: `BIGINT` arrives as text, `DECIMAL` and `MONEY` as numbers, `DATE` and
   `DATETIME` as dates read in UTC.

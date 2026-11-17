@@ -48,7 +48,9 @@ Ask a question in natural language.
   injection filter; the model sees the last 6.
 - `previousAnswerHandle` is optional. When it verifies (same caller, same project, not
   expired), the engine starts from that answer's SQL and question, for follow-ups such as
-  "now only for Q3". A handle that does not verify is ignored, never an error.
+  "now only for Q3", when that SQL still passes the validator against the current catalog
+  (since 1.30.0); otherwise the handle is ignored. A handle that does not verify is ignored,
+  never an error.
 - `stream` is optional, see "Streaming the answer" below.
 
 Response `200`:
@@ -202,6 +204,8 @@ Plain-language explanation of a previous answer's SQL. One model call, memoized 
 ```
 
 Response `200`: `{ "explanation": "…", "cached": false }`. Same `404` semantics as `/export`.
+`410` when the answer's statement is no longer allowed (a column masked or a table removed
+since).
 Audited as `status=explain` / `explain_error`.
 
 ## POST /feedback
@@ -240,17 +244,21 @@ object `/ask` returns. For the example above, on the demo data, the result is 20
 the certificate reads `CONTRADICTED`, with 2328.60 as the figure over distinct invoices.
 
 The statement goes through what every statement of the assistant goes through: read-only,
-only the tables and columns of the catalog, never a masked column, the row policies of the
+only the tables and columns of the catalog, refusal of any statement in which it finds a
+masked column, the row policies of the
 caller, the row cap, the read-only connection. A statement that fails any of that answers
 422 with `{ "error": "<the reason>", "suggestion": "<a hint, or null>" }` and nothing runs.
 `400` when `sql` is missing. Same credential, gates and quotas as `/ask`, counted on their
 own, and every request is audited like an answer.
 
 It answers 404 until `ROSIE_CERTIFY_SQL=true`. That is deliberate: everywhere else a caller
-asks in words and never hands the engine SQL. Turning it on does not widen what can be read.
-It changes who writes the statement, so a caller holding the API credential can read
-anything that credential's row policies allow, in any combination, instead of what a
-question happens to produce. Turn it on where that is acceptable.
+asks in words and never hands the engine SQL. Turning it on does not widen what the
+validator allows. It changes who writes the statement, so a caller holding the API
+credential can read anything that credential's row policies allow, in any combination,
+instead of what a question happens to produce, and can try statements against the validator
+directly, with no model in between. Every validator gap fixed in 1.29.2 and 1.30.0 was
+reachable this way ([SECURITY_OVERVIEW.md](SECURITY_OVERVIEW.md), "Corrections"). Turn it
+on where that is acceptable, and only with column grants in place.
 
 ## GET /project-info (public)
 
@@ -289,9 +297,24 @@ bundle.
              "dbWriteFailures": 0, "droppedRecords": 0, "rejectedRows": 0,
              "lastDbFailureAt": null,
              "fileSinkOk": true, "fileDurability": "write", "fileWriteFailures": 0,
-             "fileReopened": 0, "lastFileError": null }
+             "fileReopened": 0, "lastFileError": null },
+  "columnGrants": [
+    { "projectId": "my-project", "mode": "database", "label": "masked by the database",
+      "total": 4, "denied": 4, "readable": 0, "unverified": 0,
+      "checkedAt": "2026-11-17T09:00:00.000Z" }
+  ]
 }
 ```
+
+`columnGrants` has one entry per context: whether the read-only account can read the
+context's masked columns, as checked at startup, every 15 minutes and after a context
+reload. `readable` and `unverified` are counts. `mode` is `database`
+("masked by the database": every masked column denied by the database), `rosie` ("masked by
+Rosie only": at least one readable or not verified), `mssql` ("not verified on SQL Server"),
+`none` (nothing masked) or `unchecked` (the check could not run, for example because the
+database could not be reached, with counts of `0`, or has not run yet, with `null` counts). The `/health` of `npm run mcp:http` carries the same field. It names no
+column; the server log, `npm run doctor` and `/admin/overview` (`status.maskedColumns`) do. It does not change `status`, and Rosie keeps answering in every mode. How to
+read it and what to grant: [INSTALL.md](INSTALL.md#check-what-the-read-only-account-can-read).
 
 `status` is `degraded` while either audit sink is failing; page on `dbHealthy=false` or
 `fileSinkOk=false` (a governance control that fails silently is not a control).

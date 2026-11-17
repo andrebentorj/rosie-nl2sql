@@ -128,11 +128,15 @@ application that can ask questions has no business replacing the catalog.
 
 - **All or nothing.** The new context is built and validated completely before it replaces
   the old one. A catalog that is not valid JSON, a table with no columns, a metric that
-  names a missing column or a row policy on an unknown table makes the reload fail. The
+  names a missing column, or a row policy on an unknown table or that names an unknown or
+  masked column, makes the reload fail. The
   endpoint then answers 422 with the reason, the signal logs `context_reload_failed`, and
   the server keeps answering with the context it had. There is no half-loaded state.
 - **A question in flight is not disturbed.** It finishes with the context it started with,
   so one answer is never validated against two catalogs. The next question gets the new one.
+  So a question running when a reload adds a mask can still read what the old context
+  allowed until it ends (at most two minutes over HTTP). When a mask is urgent, take the
+  column's privilege in the database first.
 - **The project cannot be renamed.** Answer handles and MCP scopes are bound to the project
   id. A reload that would change it is refused; do that with a restart.
 - **`.env` is not reread.** Database credentials, the model and limits are process
@@ -293,7 +297,11 @@ approved query it is worse: a person signed it for a schema that no longer exist
 Rosie compares the catalog with the database at startup, every hour, and after each context
 reload. The comparison runs as the read-only user, so it answers the question that matters:
 can Rosie still read what the catalog names? A table that user lost access to counts as
-missing.
+missing. With column grants (INSTALL.md, Step 2) the database hides the masked columns from
+that user, so the comparison cannot see them. That is expected for masked columns only: no
+statement may read them, so nothing that runs depends on them. `npm run doctor` counts them
+as "masked column(s) hidden by the database" and does not fail on them, and the column check
+reports them as denied. A missing column that is not masked is a real problem.
 
 The comparison is scheduled by the HTTP server (`npm start`). The MCP entry points
 (`npm run mcp`, `npm run mcp:http`) do not run it: in those processes nothing is suspended,
@@ -413,7 +421,7 @@ other page explains. All are read at startup; changing one needs a restart.
 | `TRUST_PROXY` | unset | Number of reverse-proxy hops in front of Rosie (usually `1`), or a list of proxy addresses. Unset, the client address Rosie sees is the proxy's and every user shares one rate-limit bucket. `true` trusts any `X-Forwarded-For` and is logged as a warning |
 | `NODE_ENV` | unset | `production` makes authentication fail closed: with no `ROSIE_API_TOKEN` and no JWT configured, every request is refused with 503. The Docker image sets it |
 | `ROSIE_CORS_ORIGIN` | `http://localhost:4200` | Origins allowed to call the API from a browser, comma-separated. `*` is refused |
-| `LOG_LEVEL` | `info` | `error`, `warn`, `info` or `debug`. Full SQL text is logged only at `debug`; filter values can hold personal data, so keep production at `info` |
+| `LOG_LEVEL` | `info` | `error`, `warn`, `info` or `debug`. Full SQL text is logged only at `debug`; filter values can hold personal data, so keep production at `info`. So is the text of a database error, which can quote a stored value (since 1.30.0; before, at `error`) |
 | `LOG_FORMAT` | `pretty` | `json` writes one JSON object per line, for a log aggregator |
 | `ROSIE_EVAL_DIR` | `<context>/eval/runs` | Where `npm run evaluate` writes its runs and where the server reads the last one. Set it when the context is mounted read-only |
 | `ROSIE_PERMCHECK_INTERVAL_MS` | `900000` | How often the privileges of the read-only user are checked again. A value under one minute is replaced by the default |

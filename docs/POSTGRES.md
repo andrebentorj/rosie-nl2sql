@@ -1,6 +1,6 @@
 # PostgreSQL
 
-Rosie runs on PostgreSQL as well as MySQL and MariaDB. The engine is selected with one
+Rosie runs on PostgreSQL as well as MySQL and SQL Server. The engine is selected with one
 variable; everything else (context directory, widget, MCP server, Answer Certificate, eval
 harness) is the same.
 
@@ -55,15 +55,62 @@ also needs to read it, or run those commands with another account.
 
 ## The read-only role
 
+Grant it table by table, and column by column on the tables that have masked columns: the
+unmasked columns only. Do not use `GRANT SELECT ON ALL TABLES IN SCHEMA`: it is a table-level
+grant on every table, masked ones included. Why this matters, and how Rosie checks the
+result, is in [INSTALL.md](INSTALL.md), Step 2.
+
 ```sql
 CREATE ROLE rosie_readonly LOGIN PASSWORD '...';
 GRANT CONNECT ON DATABASE sales TO rosie_readonly;
 GRANT USAGE ON SCHEMA public TO rosie_readonly;
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO rosie_readonly;
+-- A table with no masked column: the whole table.
+GRANT SELECT ON public.invoice, public.invoice_line TO rosie_readonly;
+-- A table with masked columns: its unmasked columns only, no table-level SELECT.
+GRANT SELECT (customer_id, first_name, last_name, city, country)
+      ON public.customer TO rosie_readonly;
 ```
 
-`GRANT ... ON ALL TABLES` covers the tables that exist when it runs. A table created later
-is not readable by this role until you grant it.
+Quote names that are not all lower case, as `npm run init` does: an unquoted name is folded
+to lower case, so a table created as `"Customer"` is granted with
+`GRANT SELECT ("CustomerId", "FirstName") ON public."Customer" TO rosie_readonly;`. A table
+created later is not readable by this role until you grant it.
+
+**An account created before 1.30.0.** `npm run init -- --create-ro-user` used to grant
+`SELECT ON ALL TABLES IN SCHEMA public`. Take that away first, then grant as above:
+
+```sql
+REVOKE SELECT ON ALL TABLES IN SCHEMA public FROM rosie_readonly;
+```
+
+Running `--create-ro-user` again does not do this. It grants nothing to a read-only user you
+named as existing, and when `rosie_readonly` already exists its `CREATE ROLE` fails and the
+wizard only prints the statements.
+
+The traps, each of which leaves a masked column readable:
+
+- **A table-level grant implies every column.** `GRANT SELECT ON public.customer` covers all
+  its columns, present and future, and a column `REVOKE` under it changes nothing: a
+  narrower grant does not remove a broader one. If the role already has a table-level grant
+  (from `ON ALL TABLES IN SCHEMA`, for example), take it away first
+  (`REVOKE SELECT ON public.customer FROM rosie_readonly;`) and then grant the columns.
+- **PUBLIC.** A privilege granted to `PUBLIC` is held by every role. In `psql`, `\dp
+  public.customer` must show no entry that starts with `=` (that is PUBLIC) granting `r`.
+- **`pg_read_all_data`** (PostgreSQL 14 and later) reads every column of every table. The
+  role must not be a member, directly or through another role.
+- **Roles the account can switch to.** A role the account is a member of is one `SET ROLE`
+  away, even with `INHERIT FALSE`. Keep `rosie_readonly` out of other roles. `\du
+  rosie_readonly` shows its memberships.
+- **Default privileges.** `ALTER DEFAULT PRIVILEGES ... GRANT SELECT ON TABLES TO
+  rosie_readonly` makes every new table fully readable. Do not set it for this role.
+
+Then check, as `rosie_readonly`, for each masked column: `SELECT email FROM public.customer
+WHERE 1 = 0;` (with the block above), or `SELECT "Email" FROM public."Customer" WHERE 1 = 0;`
+when the names are not lower case, must fail with `42501` (permission denied). Rosie runs the same check at startup and every 15 minutes,
+asks every role the account is a member of, and reports the result in `/health`
+([INSTALL.md](INSTALL.md#check-what-the-read-only-account-can-read)). A column privilege does
+not reach through a view, which reads with its owner's rights: mask the view's column too,
+or leave the view out of the catalog.
 
 At startup, and every 15 minutes after, Rosie checks this role and refuses to answer
 (`securityHold`) if it finds any of:
@@ -112,12 +159,20 @@ allocate a gigabyte). The list is `ALLOWED_FUNCTIONS` in
 table name is replaced by its exact catalog spelling, every qualifier by the alias it refers
 to, and every unquoted column that matches one mixed-case catalog column or output alias is
 quoted with that spelling. Lower-case schemas are left as written. The allowlist and the
-masked-column list ignore case, so `"Email"`, `email` and `"EMAIL"` are all refused when the
-column is masked.
+masked-column list ignore case, so Rosie's validator treats `"Email"`, `email` and `"EMAIL"`
+as the same masked column, wherever it finds it in a statement. Up to 1.29.2 it did not find
+a double-quoted column in some positions (inside `SUBSTRING`, `POSITION`, `LIKE`, `~`,
+`AT TIME ZONE` and others) or after `IS DISTINCT FROM`; see the advisory in
+[SECURITY_OVERVIEW.md](SECURITY_OVERVIEW.md). Column grants on the read-only role are what
+makes the server refuse a masked column whatever the validator misses.
 
 ## Limits
 
 - One schema per deployment. Two tables whose names differ only by case are not supported.
+- `IS DISTINCT FROM` and `IS NOT DISTINCT FROM` are refused since 1.30.0. Write `=`, `<>`,
+  `IS NULL` or `COALESCE` instead.
+- Two table names or aliases in one statement that differ only by letter case, by an accent
+  or by a look-alike letter are refused (all engines since 1.30.0).
 - Text comparison is accent-sensitive: `ILIKE 'Luis'` does not match `Luís`, where MySQL's
   default collation would. `lookup_values` therefore finds fewer near-matches than on MySQL.
 - The function allowlist is fixed in code; there is no configuration to extend it yet.
