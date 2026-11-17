@@ -656,8 +656,34 @@ empty and is silent on another is worse than no note. Since 1.29.1, once NULL is
 blank text in the column is named with it, however few the rows: `no value (NULL) in 51% of
 rows; and empty or blank text in 23 more rows, which IS NOT NULL does not leave out`. Over
 the 798 profiled columns of the eleven databases this changes three notes: these two and
-`codebase_community.users.location`. **The corrected notes have not been measured with a
-model.**
+`codebase_community.users.location`.
+
+### The corrected note, measured (three passes)
+
+Criteria written before the runs. Engine 1.27.0 with one file taken from 1.29.1, the rule
+above, so that three notes of 798 are all that differs from the profile passes of 1.27.0.
+
+| `gpt-6-luna`, corrected notes (323, 304, 309) | Against | Ahead / behind | p |
+|---|---|---|---|
+| `formula_1` only | profile 1.27.0 | 24 / 3 | under 0.0001 |
+| `formula_1` only | plain 1.27.0 | 18 / 6 | 0.023 |
+| All 500 | plain 1.27.0 (266, 285, 277) | 130 / 80 | 0.0007 |
+| The same without `superhero` | | 97 / 76 | 0.13 |
+| The other ten databases, as placebo | profile 1.27.0 | 73 / 73 | 1.0 |
+
+**What may be said.**
+
+- **The correction returns what the silent note lost.** On `formula_1` the mean goes from
+  31.7 to 46.0 right answers of 55, and the placebo is flat: on the ten databases where
+  nothing or one note changed, 73 questions went each way.
+- **The profile no longer hurts on `formula_1`; it helps there**, against no profile.
+- **For the small model the profile is a gain on data that records a missing value as a
+  value, and not shown to be one elsewhere.** It is ahead of no profile over all 500
+  questions, and without `superhero` the test does not reach the line (97 against 76). That
+  is the second of the three readings fixed beforehand, the same one the stronger model got
+  in the first campaign.
+
+`npm run bird:compare -- --a docs/benchmark-runs/bird-pass-luna-plain-1-1.27.0.json,docs/benchmark-runs/bird-pass-luna-plain-2-1.27.0.json,docs/benchmark-runs/bird-pass-luna-plain-3-1.27.0.json --b docs/benchmark-runs/bird-pass-luna-profile-blank-1-1.27.0.json,docs/benchmark-runs/bird-pass-luna-profile-blank-2-1.27.0.json,docs/benchmark-runs/bird-pass-luna-profile-blank-3-1.27.0.json`.
 
 `npm run bird:compare -- --a docs/benchmark-runs/bird-pass-luna-plain-1-1.27.0.json,docs/benchmark-runs/bird-pass-luna-plain-2-1.27.0.json,docs/benchmark-runs/bird-pass-luna-plain-3-1.27.0.json --b docs/benchmark-runs/bird-pass-luna-profile-1-1.27.0.json,docs/benchmark-runs/bird-pass-luna-profile-2-1.27.0.json,docs/benchmark-runs/bird-pass-luna-profile-3-1.27.0.json`.
 

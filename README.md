@@ -229,9 +229,13 @@ the same configuration 16% to 20% of the questions change outcome with the small
   on one engine version, three passes a side (266, 285, 277 without the profile; 300, 302,
   301 with it): 114 questions ahead and 88 behind, which chance gives one time in thirteen,
   and 83 against 85 without the one database where a missing value is recorded as 0. So
-  with the present notes no general gain is claimed for the small model. One cause was
+  with those notes no general gain could be claimed for the small model. One cause was
   found and corrected in 1.29.1 (a note that named NULL and was silent on blank text in the
-  same column); the corrected notes have not been measured.
+  same column, which made the model do worse than with no note). Measured again with the
+  correction (323, 304, 309): 130 questions ahead of no profile and 80 behind, and 97
+  against 76 without that one database, which chance gives one time in eight. So for the
+  small model, as for the stronger one, the profile is a gain on data that records a missing
+  value as a value, and not shown to be one elsewhere.
 - **The certificate caught few of these errors**: 10 of 214 wrong answers in the first run
   of the small model. Almost all the others compute something sound that is not what was
   asked, which it does not catch. An independent reading of a sample of them found about
