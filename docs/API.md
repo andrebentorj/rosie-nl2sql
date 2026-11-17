@@ -19,7 +19,8 @@ valid JSON, both as `{ "error": "..." }`. A request whose `Origin` header is not
 
 Middleware order on `/ask`: feature flag (`AI_ASSISTANT_ENABLED`) → read-only privilege gate
 (503 while the probe fails) → masked-column grant gate (503 while
-`ROSIE_REQUIRE_COLUMN_GRANTS=true` and the context is neither "masked by the database" nor
+the gate is on, by default in strict mode (`ROSIE_REQUIRE_COLUMN_GRANTS` sets it explicitly in
+either mode), and the context is neither "masked by the database" nor
 "no masked columns", decided when the request arrives; see
 `/health` below) → audit-policy gate → auth → hourly limit → daily limit → concurrency.
 `/export`, `/explain` and `/certify` carry the same two gates.
@@ -283,7 +284,8 @@ widget stops the typing there. `brand` is the validated white-label block of `pr
 bundle this backend serves at `/widget.js`; a copied widget compares itself with it.
 `securityHold: true` means every question is refused until an administrator fixes the
 grants: either the read-only user has more than SELECT privileges, or (since 1.31.0, with
-`ROSIE_REQUIRE_COLUMN_GRANTS=true`) the masked-column check of the default context did not
+the column-grant gate on: by default in strict mode, or with `ROSIE_REQUIRE_COLUMN_GRANTS=true`
+in either mode) the masked-column check of the default context did not
 pass, in which case `securityCode` is one of the `E_COLUMN_GRANTS_` codes below and
 `securityMessage` the hold message. The permission hold wins when both apply.
 
@@ -304,19 +306,28 @@ bundle.
              "lastDbFailureAt": null,
              "fileSinkOk": true, "fileDurability": "write", "fileWriteFailures": 0,
              "fileReopened": 0, "lastFileError": null },
-  "columnGrantsRequired": false,
+  "columnGrantsRequired": true,
+  "maskingMode": "strict",
   "columnGrants": [
-    { "projectId": "my-project", "mode": "database", "label": "masked by the database",
+    { "projectId": "my-project", "maskingMode": "strict",
+      "mode": "database", "label": "masked by the database",
       "total": 4, "denied": 4, "readable": 0, "unverified": 0,
       "reasons": [], "limits": [ "mysql_join_using_natural", "mysql_column_statistics" ],
-      "checkedAt": "2026-11-17T09:00:00.000Z", "hold": false }
+      "checkedAt": "2026-11-17T09:00:00.000Z", "hold": false,
+      "checkAgeMs": 412000, "stale": false, "holdReason": null }
   ]
 }
 ```
 
 `columnGrants` has one entry per context: whether the read-only account can read the
 context's masked columns, as checked at startup, every 15 minutes and after a context
-reload. `readable` and `unverified` are counts. `mode` is `database`
+reload. `maskingMode` is `express` or `strict` (`ROSIE_MASKING_MODE`, since 1.32.0); it is
+also at the top level, next to `columnGrantsRequired`, so it shows before any context has
+been checked. Since 1.32.0 each entry also carries `checkAgeMs` (milliseconds since the start
+of the check behind the result, `null` before any check), `stale` (`true` once that is past
+`ROSIE_COLUMN_GRANTS_MAX_AGE_MS`, in both modes) and `holdReason` (with the gate on, why a
+passing result holds: `expired`, `account_changed`, `pool_not_rotated` or `no_lease`; `null`
+otherwise); such a hold answers with `E_COLUMN_GRANTS_NOT_CHECKED`. `readable` and `unverified` are counts. `mode` is `database`
 ("masked by the database": every masked column denied to the account and to every role it can
 switch to, every unmasked catalog column readable, every catalog view reviewed), `rosie`
 ("masked by Rosie only": anything else), `mssql` ("not verified on SQL Server": nothing
@@ -331,14 +342,14 @@ database does not stop on that engine whatever the mode (`mysql_join_using_natur
 `mysql_column_statistics`, `mssql_pivot`). `unverified` also counts definer routines not
 listed in `"reviewedRoutines"` and MySQL definer views the check could not read
 (`object_not_verifiable`); `total` and `denied` count
-masked columns only. `columnGrantsRequired` is `ROSIE_REQUIRE_COLUMN_GRANTS`, and `hold` is true
+masked columns only. `columnGrantsRequired` is `ROSIE_REQUIRE_COLUMN_GRANTS` as in effect (by default `false` in express mode and `true` in strict), and `hold` is true
 when it is on and that context refuses requests. The `/health` of `npm run mcp:http` carries
 the same fields, and its `status` is `security_hold` during a hold. It names no column; the
 server log, `npm run doctor` and `/admin/overview` (`status.maskedColumns`) do. It does not
 change `status` here. How to read it and what to grant:
 [INSTALL.md](INSTALL.md#check-what-the-read-only-account-can-read).
 
-With `ROSIE_REQUIRE_COLUMN_GRANTS=true`, `/ask`, `/export`, `/explain` and `/certify` of a
+With the gate is on (`ROSIE_REQUIRE_COLUMN_GRANTS`: on by default in strict mode, and can be set explicitly in either mode), `/ask`, `/export`, `/explain` and `/certify` of a
 held context answer `503` with
 `{ "error": "<message>", "code": "<code>", "securityHold": true, "columnGrantsHold": true }`,
 where `code` is `E_COLUMN_GRANTS_NOT_CHECKED` (not checked yet, the check could not run, or a
@@ -369,7 +380,7 @@ Rebuilds the context from its directory and puts it in service without a restart
 `ROSIE_ADMIN_TOKEN` is set; `ROSIE_API_TOKEN` does not open it. Answers 200 with a summary
 (`changed`, `version`, counts of tables, metrics and approved queries), or 422 with the
 reason when the new context does not build, in which case the context in service is
-unchanged. With `ROSIE_REQUIRE_COLUMN_GRANTS=true` the summary also carries `"pending": true`:
+unchanged. With the column-grant gate on (by default in strict mode) the summary also carries `"pending": true`:
 the new context is swapped in once its masked-column check has run, and the context in
 service keeps serving until then. See [OPERATIONS.md](OPERATIONS.md).
 

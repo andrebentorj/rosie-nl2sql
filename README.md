@@ -51,11 +51,13 @@ that statement, the certificate reports both figures and marks the answer `CONTR
 - **Read-only, and it proves it.** SQL is validated on its syntax tree against an allowlist
   before it runs, statements that name a masked column are refused by Rosie's validator, row
   policies are applied by the engine from the caller's verified identity, and Rosie stops
-  answering if its database user can do more than SELECT. Take the masked columns' privilege
-  from the database account as well, so the database refuses them too; Rosie checks at
-  startup whether it did. [docs/SECURITY_OVERVIEW.md](docs/SECURITY_OVERVIEW.md).
-- **Short to install, short to embed.** `npm run init` to set up, `npm run doctor` to find
-  what is wrong and how to fix it, one script tag for the chat widget, one command to add
+  answering if its database user can do more than SELECT. In strict mode the database also
+  denies the account every masked column Rosie knows how to reach, with named gaps, and Rosie
+  checks at startup and every 15 minutes that it does.
+  [docs/SECURITY_OVERVIEW.md](docs/SECURITY_OVERVIEW.md).
+- **Short to install, short to embed.** An express install in three steps, and a strict
+  mode for when the database must deny the masked columns too. `npm run init` to set up,
+  `npm run doctor` to find what is wrong and how to fix it, one script tag for the chat widget, one command to add
   it to Claude or Cursor over MCP. [Install](#install), [Connect](#connect).
 - **It gets better where people use it.** A person approves the query behind a recurring
   question and it is run unchanged from then on; a metric is declared once and the engine
@@ -82,11 +84,11 @@ from the database, and it grows from use.
 |---|---|---|
 | Structure | Tables, views, columns, types, primary and foreign keys and approximate row counts, from the database's own system catalogs. No rows. | `schema-catalog.json`, which is also the allowlist: what is not in it cannot be queried. |
 | Relationships | Column names, where the database declares no foreign key. | Proposed joins, for you to confirm. |
-| Personal data | Column names only. | `masked-columns.json`: columns Rosie refuses to read or return and leaves out of what it tells the model. Give the read-only account no privilege on them. You confirm the list. |
+| Personal data | Column names only. | `masked-columns.json`: columns Rosie refuses to read or return and leaves out of what it tells the model. In strict mode the read-only account has no privilege on them either. You confirm the list. |
 | Meaning | The catalog, and sample values only if you allow it (`--samples`). | Descriptions, synonyms, what each code means, metrics, the assistant's instructions and the questions it should ask back when a request is ambiguous. |
 | Examples | Your database. | `verified-queries.json`: each example has to pass the validator and run on your data, or it is dropped. |
 | A first question bank | Your database. | Questions with expected results taken from real execution, to measure accuracy before anyone uses it. |
-| Access | | With `--create-ro-user`, a user that can only SELECT. With `--create-engine-tables`, the tables for the audit trail. A `.env` with a generated token. |
+| Access | | With `--create-ro-user`, a user that can only SELECT: on the whole schema in express mode, table by table and on masked tables column by column in strict mode. With `--create-engine-tables`, the tables for the audit trail. A `.env` with a generated token. |
 
 It ends with a report that marks every file a model wrote as provisional, for a person to
 review. The structure is never written by a model.
@@ -155,7 +157,7 @@ understood, and a passed check does not mean the answer is right
 |---|---|
 | **Answer Certificate** | After the SQL runs: detects joins that inflate totals, filters on values that do not exist, periods the data only partly covers, filters that remove nothing, and queries that ignore a declared metric definition. For totals over joins it re-derives the number by a second route: `CROSS_CHECKED` when both agree, `CONTRADICTED` when they differ and the context says the column counts once per record, and both figures side by side when the statement alone cannot say which was meant. It does not re-derive every shape (several totals in one statement, a total inside a function, a zero result: [docs/CERTIFICATE.md](docs/CERTIFICATE.md)), and then the verdict is `NOT_CHECKED` with the reason. With the checks on, which is the default, an answer that ran SQL carries a verdict. |
 | **Read-only by construction** | SQL is parsed and validated before it runs: SELECT only, tables and columns from an allowlist, no system functions. The database user is checked at startup and Rosie refuses to answer if it can do more than SELECT. |
-| **Masked columns** | Rosie refuses statements that read a masked column and leaves masked columns out of the schema it describes to the model. Reviews have found ways around this check, most recently in 1.29.2 ([Corrections](docs/SECURITY_OVERVIEW.md#corrections)). Give the read-only account no privilege on them (`npm run grants` prints the statements): Rosie then reports "masked by the database" in `/health`, and a statement its own check misses is refused by your database, except through a copy of the column, on MySQL a join `USING` a masked column, a histogram created between two checks or a definer stored function the account can execute, and on SQL Server a `PIVOT`, where column grants are not enough ([what each engine can give](docs/INSTALL.md#what-each-engine-can-give)). `ROSIE_REQUIRE_COLUMN_GRANTS=true` refuses to answer until the check passes. |
+| **Masked columns** | Two modes ([docs/INSTALL.md](docs/INSTALL.md#choosing-a-masking-mode)). **Express** (the default): Rosie refuses statements that reach a masked column and leaves masked columns out of what it describes to the model. This is Rosie's own reading of SQL; independent reviews have found ways around it before, most recently in 1.29.2 ([Corrections](docs/SECURITY_OVERVIEW.md#corrections)), and the database account can read those columns. **Strict**: the read-only account has no privilege on the masked columns (`npm run grants` prints the statements), Rosie verifies it and reports "masked by the database" in `/health`, and holds requests until the check passes and while that result is fresh. The claim is that the database denies this account every masked column Rosie knows how to reach, on these engines, with named gaps: the check probes the masked columns (also through roles, PostgreSQL partitions and inheritance relatives, and MySQL histograms) and is an allowlist: anything the account can read or execute beyond the catalog tables and the reviewed objects holds the context; within what the check enumerates, an object it does not recognise is held, not passed, and the paths that are not objects are named gaps. The review markers are your statement. Named gaps: copies of a column, on MySQL a join `USING` a masked column, a histogram created between two checks or a definer stored function, and on SQL Server a `PIVOT`, where column grants are not enough ([what each engine can give](docs/INSTALL.md#what-each-engine-can-give)). |
 | **Per-tenant isolation** | Row policies filter every query by the caller's verified identity (JWT). The filter is applied by the engine, not by the model, and cannot be talked around. |
 | **Approved queries** | A query a person reviewed for a question is run unchanged when the question comes back, with only the values swapped, and the answer says who approved it. The checks cover the calculation; this covers the meaning. |
 | **Metrics with one definition** | Declare "revenue" once, or import it from dbt or Cube. For a declared metric the engine writes the query itself, formula and joins, so it cannot be inflated by a join. A query the model writes on its own is compared with the definition when it adds the column up straight from tables; through a subquery that comparison stays silent and the fan-out checks speak. |
@@ -369,20 +371,32 @@ directory. The contract is in [contexts/example/README.md](docs/CONTEXT_DIRECTOR
   `UNION ALL` inside a derived table, with every branch validated on its own. Functions are
   allowlisted on every engine (on MySQL since 1.31.0), so a user-defined or schema-qualified
   function cannot be called.
-- Masked columns refused by the validator in every tool that runs SQL; the database's column
-  privileges are the layer that does not depend on Rosie. At startup and every 15 minutes
-  Rosie checks its read-only account (masked columns denied, through roles, partitions and
-  histograms too; unmasked columns readable; catalog views reviewed; views and definer
-  routines it can use, any it cannot read with confidence reported as not verifiable) and reports per context "masked by the database" or "masked by Rosie
-  only", with reason codes. With `ROSIE_REQUIRE_COLUMN_GRANTS=true` a context that is
-  neither "masked by the database" nor "no masked columns" answers nothing. On PostgreSQL
-  the database then refuses any statement that reaches a masked column of a catalog table.
-  On MySQL it refuses a statement that reads one by name, but not joins `USING` one, a
-  `NATURAL JOIN`, a histogram created between two checks, or a call to a definer stored
-  function (the validator refuses all of these, and the check reports the routines): there
-  the validator is a required layer. On SQL Server column grants do not stop `PIVOT`, and only
-  the reviewed-view design reaches "masked by the database"
-  ([docs/INSTALL.md](docs/INSTALL.md#what-each-engine-can-give)).
+- Masked columns, in one of two modes
+  ([docs/INSTALL.md](docs/INSTALL.md#choosing-a-masking-mode)).
+  - **Express** (the default): Rosie refuses statements that reach a masked column and
+    leaves masked columns out of what it describes to the model. This is Rosie's own reading
+    of SQL; independent reviews have found ways around it before (see
+    [Corrections](docs/SECURITY_OVERVIEW.md#corrections)), and the database account can read
+    those columns.
+  - **Strict**: the database's column privileges are the layer that does not depend on
+    Rosie, with the validator on top. At startup and every 15 minutes Rosie checks its
+    read-only account (masked columns denied, through roles, partitions and histograms too;
+    unmasked columns readable; catalog views reviewed; nothing readable or executable
+    beyond the catalog tables and the reviewed objects) and reports per context
+    "masked by the database" or "masked by Rosie only", with reason codes; the check runs in
+    express mode too. In strict mode a context that is neither "masked by the database" nor
+    "no masked columns" answers nothing (`ROSIE_REQUIRE_COLUMN_GRANTS`, on by default in
+    strict), and a passing result counts for 35 minutes by default. The claim is that
+    the database denies this account every masked column Rosie knows how to reach, on these engines, with named gaps. Within what the check enumerates, an object it does not
+    recognise is held, not passed, and the review markers are your statement. On PostgreSQL
+    the database refuses a statement that names a masked column, also through partitions and
+    inheritance relatives, and anything else the account can read or execute holds the context
+    until it is reviewed or taken away. On MySQL it refuses a statement that reads one by name, but
+    not joins `USING` one, a `NATURAL JOIN`, a histogram created between two checks, or a
+    call to a definer stored function (the validator refuses all of these, and the check
+    reports the routines): there the validator is a required layer. On SQL Server column
+    grants do not stop `PIVOT`, and only the reviewed-view design reaches "masked by the
+    database" ([docs/INSTALL.md](docs/INSTALL.md#what-each-engine-can-give)).
 - Row policies applied to every read, including exports and the certificate's own probes.
 - A prompt-injection filter in front of the model, applied to the question and to the
   conversation history.
@@ -393,8 +407,11 @@ live suites against real MySQL, PostgreSQL and SQL Server servers.
 
 **Security reviews.** Independent reviews have found ways around Rosie's validator more than
 once, most recently in 1.29.2, and a test battery only checks the shapes someone thought
-of. The database grant is the layer that does not depend on Rosie. No independent review of
-1.31.0 has happened yet; its own findings are in
+of. In strict mode the database grant is the layer that does not depend on Rosie; in
+express mode there is no such layer. Two independent reviews of 1.31.0 found readable paths
+the strict check did not cover (whole-row views and foreign tables on PostgreSQL, nested
+views on MySQL, procedures on SQL Server) and lifecycle gaps in the gate; 1.32.0 closes them
+and narrows the claim. 1.32.0 itself has not been reviewed independently. The findings are in
 [Corrections](docs/SECURITY_OVERVIEW.md#corrections). If you ran 1.29.2 or
 earlier with masked columns, read the
 [operator advisory](docs/SECURITY_OVERVIEW.md#advisory-masked-columns-in-1292-and-earlier).
@@ -413,8 +430,9 @@ does not document. The ones worth knowing first:
 | `ROSIE_API_TOKEN` | (generated by `npm run init`) | The token callers present |
 | `AI_ASSISTANT_ENABLED` | `false` (`npm run init` writes `true`) | Emergency stop: anything but `true` makes the question, export, explanation, feedback and certify endpoints return 404 |
 | `AI_CROSS_CHECK` | `true` | `false` turns off the second derivation (`CROSS_CHECKED` / `CONTRADICTED`) |
-| `ROSIE_AUDIT_POLICY` | `fail-open` | `fail-closed` refuses to answer while no audit sink can record |
-| `ROSIE_REQUIRE_COLUMN_GRANTS` | `false` | `true` refuses to answer for a context that has masked columns the database does not mask (Step 2 of [docs/INSTALL.md](docs/INSTALL.md#requiring-the-database-grant-rosie_require_column_grants)) |
+| `ROSIE_AUDIT_POLICY` | `fail-open` | `fail-closed` refuses to answer while no audit sink can record. Read without letter case; any other value stops the server |
+| `ROSIE_MASKING_MODE` | `express` | `strict` when the database must deny the masked columns too: table and column grants, verified at startup ([docs/INSTALL.md](docs/INSTALL.md#choosing-a-masking-mode)) |
+| `ROSIE_REQUIRE_COLUMN_GRANTS` | `false` in express, `true` in strict | `true` refuses to answer for a context that has masked columns the database does not mask (Step 2 of [docs/INSTALL.md](docs/INSTALL.md#requiring-the-database-grant-rosie_require_column_grants)) |
 
 **Things to know before production.**
 

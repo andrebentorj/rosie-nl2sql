@@ -20,14 +20,21 @@ user that can only SELECT from it, and a `rosie` schema holding the engine's own
 The credentials in `docker-compose.yml` are demo values bound to the loopback interface.
 
 Since 1.30.0 `rosie_ro` is granted table by table, and on the tables with masked columns
-(`contexts/demo/masked-columns.json`) only the unmasked columns. `/health` should then show
-"masked by the database" for the demo context on MySQL and PostgreSQL (on MySQL with the
-limits `mysql_join_using_natural` and `mysql_column_statistics`). On SQL Server it shows "masked by Rosie only", with each
-masked column readable through `PIVOT`: column grants do not stop a `PIVOT` there
-(`docs/SQLSERVER.md`).
+(`contexts/demo/masked-columns.json`) only the unmasked columns. The demo env files set the
+masking mode (`docs/INSTALL.md`, "Choosing a masking mode") to match what each engine can
+reach with those grants:
+
+- **MySQL and PostgreSQL run in strict mode** (`ROSIE_MASKING_MODE=strict`). The grants
+  reach "masked by the database", which `/health` should show for the demo context (on MySQL
+  with the limits `mysql_join_using_natural` and `mysql_column_statistics`), and requests are
+  held if they stop doing so.
+- **SQL Server runs in express mode** (`ROSIE_MASKING_MODE=express`). Column grants do not
+  stop a `PIVOT` there (`docs/SQLSERVER.md`), so `/health` shows "masked by Rosie only", with
+  each masked column readable through `PIVOT`, and strict mode would hold every request.
+  The masked columns rest on Rosie's validator, which refuses `PIVOT`.
 The users are created only when a container starts on an empty volume: a demo volume created
-before 1.30.0 keeps the old schema-wide grant, and `/health` shows "masked by Rosie only".
-Recreate it with `docker compose -f demo/docker-compose.yml down -v`, then `up -d`.
+before 1.30.0 keeps the old schema-wide grant, and `/health` shows "masked by Rosie only"
+(in strict mode every request is then held). Recreate it with `docker compose -f demo/docker-compose.yml down -v`, then `up -d`.
 
 ## The context
 
@@ -89,8 +96,8 @@ data is already there).
 
 ## Grant tests against the demo
 
-Three suites run against the demo containers (MySQL and PostgreSQL, the `rosie_ro` of the
-init scripts, with its column grants). They need the containers up and none runs in CI, whose
+Four suites run against the demo containers (the first three on MySQL and PostgreSQL, the
+`rosie_ro` of the init scripts, with its column grants; the fourth also on SQL Server). They need the containers up and none runs in CI, whose
 database services have no Chinook and no column-granted account. The SQL Server proof of the
 same behaviour (`PIVOT`, views, the reviewed-view grants) is part of `npm run test:sqlserver`,
 whose column-grant sections have not yet had a green run in CI.
@@ -122,6 +129,14 @@ whose column-grant sections have not yet had a green run in CI.
   the pool drained, requests held and released, and on MySQL a stale connection still
   reading; then drops every role and verifies none is left. It uses the demo's admin
   accounts and never touches `rosie_ro`.
+- `npm run test:grants:wizard` (writes to the demo servers' privilege tables): creates a
+  throwaway account (`rosie_r9_code`) through the code path of `npm run init --
+  --create-ro-user`, in express and in strict mode, on PostgreSQL, MySQL and SQL Server. As
+  that account it checks that the read-only audit passes, a write is refused, the
+  masked-column check reports what the mode gives (express "masked by Rosie only"; strict
+  "masked by the database" on PostgreSQL and MySQL, "masked by Rosie only" on SQL Server
+  because of `PIVOT`) and doctor's lines and exit code for that state; then drops the account
+  and verifies the drop. It never touches `rosie_ro`. Flag: `--engines`.
 
 A run of the differential that finds nothing says these statements hold, not that the
 validator is complete.

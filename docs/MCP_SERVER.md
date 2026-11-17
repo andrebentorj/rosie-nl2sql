@@ -189,9 +189,9 @@ stdout logging before requiring anything.
 startup, and the probe is awaited *before* the transport connects, so a client never gets a
 window where every call is refused for a reason that is really "not checked yet". If the
 probe fails, every tool call returns an explanatory error instead of an answer. The same is
-true of the audit policy: under `ROSIE_AUDIT_POLICY=fail-closed`, tool calls are refused
+true of the audit policy: under `ROSIE_AUDIT_POLICY=fail-closed` (any case; another value stops the server), tool calls are refused
 while no audit sink can record them, and of the masked-column grant check: with
-`ROSIE_REQUIRE_COLUMN_GRANTS=true` its first run is awaited too, and while the session's
+the gate is on (`ROSIE_REQUIRE_COLUMN_GRANTS`: on by default in strict mode, and can be set explicitly in either mode) its first run is awaited too, and while the session's
 context is neither "masked by the database" nor "no masked columns" every tool that runs SQL or returns an answer gives a tool error
 with the hold message and its code (`E_COLUMN_GRANTS_...`), before any quota is used
 ([INSTALL.md](INSTALL.md#requiring-the-database-grant-rosie_require_column_grants)).

@@ -143,7 +143,8 @@ application that can ask questions has no business replacing the catalog.
   configuration. Changing them needs a restart.
 - **The masked-column check runs on the new context.** After every reload the HTTP server
   checks the new context's masked columns as the read-only account and drains the read-only
-  pool. With `ROSIE_REQUIRE_COLUMN_GRANTS=true` the check runs first: the endpoint answers
+  pool. With the column-grant gate on (by default in strict mode, or
+  `ROSIE_REQUIRE_COLUMN_GRANTS=true` in either mode) the check runs first: the endpoint answers
   `"pending": true`, `context_reload_pending` is logged, the context in service keeps serving,
   and the new one takes over with its own result, held or not. The reload is never refused
   because of the check, and a periodic check that overlaps it is not stored
@@ -421,6 +422,24 @@ a key rotation is a new value and a restart.
 
 ## Settings reference
 
+**How values are read (since 1.32.0).** A yes-or-no setting is read without letter case or
+surrounding spaces: `true`, `1`, `yes` and `on` mean yes; `false`, `0`, `no` and `off` mean no.
+For the settings that decide a security behaviour, any other value is a configuration error
+and the HTTP server and both MCP servers refuse to start (the server logs
+`masking_mode_invalid` with the message; `npm run grants` exits 2; `npm run doctor` fails its
+"Masking mode" line): `ROSIE_REQUIRE_COLUMN_GRANTS`, `ROSIE_CERTIFY_SQL`, `ROSIE_ADMIN_WRITE`,
+`ROSIE_AUDIT_FSYNC`, `ROSIE_MCP_HTTP_ENABLED`, `AI_UNION_ALL`, and every yes-or-no `AI_*`
+setting: `AI_ANSWER_CHECKS`, `AI_CROSS_CHECK`, `AI_CERTIFICATE_REPAIR`, `AI_CERTIFICATE_REPAIR_UNDECLARED`, `AI_QUESTION_REVIEW`, `AI_QUESTION_REVIEW_REPAIR`, `AI_ASSISTANT_ENABLED`, `AI_CATALOG_COLUMNS`, `AI_CATALOG_DESCRIPTIONS`, `AI_CATALOG_PROFILE`. The same holds for
+`ROSIE_AUDIT_POLICY` (`fail-open` or `fail-closed`, any case) and `DB_SSL` (`true`, `require`,
+`verify`, `no-verify` or `false`, any case). The message names the setting and the value as
+written, for example `ROSIE_REQUIRE_COLUMN_GRANTS must be true or false (also 1/0, yes/no,
+on/off, any case), not "TRUE!"`. Every yes-or-no setting read through the configuration
+follows this rule; a test fails the build if a new one does not. Before 1.32.0 most of these read only `true` (and some `1`), so `TRUE` or `yes` meant
+off. `TRUST_PROXY` is not a yes-or-no setting and is unchanged.
+
+A malformed mask configuration (`E_MASK_CONFIG_INVALID`) also stops the server; a reload with
+one fails and keeps the context in service ([INSTALL.md](INSTALL.md), Step 4d).
+
 Every setting is described in `.env.example`. This table is the short form of the ones no
 other page explains. All are read at startup; changing one needs a restart.
 
@@ -433,7 +452,10 @@ other page explains. All are read at startup; changing one needs a restart.
 | `LOG_FORMAT` | `pretty` | `json` writes one JSON object per line, for a log aggregator |
 | `ROSIE_EVAL_DIR` | `<context>/eval/runs` | Where `npm run evaluate` writes its runs and where the server reads the last one. Set it when the context is mounted read-only |
 | `ROSIE_PERMCHECK_INTERVAL_MS` | `900000` | How often the privileges of the read-only user, and its masked-column grants, are checked again. A value under one minute is replaced by the default |
-| `ROSIE_REQUIRE_COLUMN_GRANTS` | `false` | `true` refuses every request that would run SQL for a context that is not "masked by the database" or "no masked columns" ([INSTALL.md](INSTALL.md#requiring-the-database-grant-rosie_require_column_grants)) |
+| `ROSIE_COLUMN_GRANTS_MAX_AGE_MS` | twice the interval plus 300000 (35 minutes) | How long a passing masked-column result lets a context serve with the gate on, counted as the larger of the monotonic and the wall-clock age. Under 60000 or not a number: the default. Above 24 hours (86400000): 24 hours, without an error, so a check interval above 24 hours holds requests between checks. Under the interval plus the check deadline it holds requests between ordinary runs ([INSTALL.md](INSTALL.md#requiring-the-database-grant-rosie_require_column_grants)) |
+| `ROSIE_COLUMN_GRANTS_CHECK_TIMEOUT_MS` | `120000` | The deadline of one masked-column check (and of one pool replacement). A check that does not finish makes the context "not checked". Under 1000 or not a number: the default |
+| `ROSIE_MASKING_MODE` | `express` | `strict` when the database must deny the masked columns too: table and column grants, verified at startup, and the gate below on by default ([INSTALL.md](INSTALL.md#choosing-a-masking-mode)). Read without letter case. Any other value stops the HTTP server (`masking_mode_invalid`, exit 1) and the MCP servers (exit 1); `npm run grants` exits 2 and `npm run doctor` fails its "Masking mode" line |
+| `ROSIE_REQUIRE_COLUMN_GRANTS` | `false` in express, `true` in strict | An explicit value wins over the mode's default. `true` refuses every request that would run SQL for a context that is not "masked by the database" or "no masked columns" ([INSTALL.md](INSTALL.md#requiring-the-database-grant-rosie_require_column_grants)) |
 | `ROSIE_MCP_HTTP_ENABLED` | `false` | Must be `true` for `npm run mcp:http` to start ([MCP_SERVER.md](MCP_SERVER.md)) |
 | `ROSIE_MCP_HTTP_HOST`, `ROSIE_MCP_HTTP_PORT` | `127.0.0.1`, `3002` | Where the MCP HTTP transport listens |
 | `AI_MAX_TOKENS` | `2048` | Tokens the model may write per reply |

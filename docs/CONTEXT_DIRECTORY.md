@@ -236,7 +236,7 @@ and since 1.24.0 a regeneration keeps what you wrote where the database declares
   the ones the database does not declare: the model joins by them, and `query_metric` only
   joins along them.
 - **table.reviewedView** `true` (since 1.31.0): this table is a view (or a materialized
-  view) in the database, and someone reviewed it and found that it exposes no masked value.
+  view, or since 1.32.0 a PostgreSQL foreign table) in the database, and someone reviewed it and found that it exposes no masked value.
   A column grant on the base tables does not reach through a view, so until a catalog view
   carries this field the masked-column grant check reports the context as "masked by Rosie
   only" (`view_not_reviewed`). Only the boolean `true` counts. It is your statement, not a
@@ -250,8 +250,20 @@ and since 1.24.0 a regeneration keeps what you wrote where the database declares
   case, `"Quoted"` parts keep their case); MySQL entries compare without case and may use
   backquotes. A listing is by name and covers every overload of that exact name, present and
   future. It is your statement, not a check (a listed routine whose body names a masked
-  column is still refused).
+  column is still refused; one that uses `*`, a whole-row reference or dynamic SQL is
+  accepted with a warning from `npm run grants -- --verify`). Since 1.32.0 entries compare as
+  (schema, name) pairs (`"a.b".c` and `a."b.c"` differ), and the list also covers SQL Server
+  procedures and functions (exact names, `[dbo].[name]` accepted).
   `npm run generate-catalog` keeps it; `npm run check-context` validates its shape.
+- **catalog.reviewedViews** (root level, since 1.32.0): `[ "schema.name", ... ]`, the tables,
+  views, materialized views, foreign tables and (SQL Server) synonyms outside the catalog that
+  the read-only account can read and that someone reviewed and found return no masked value.
+  The grant check is an allowlist: every such object, whatever it reads, is
+  `object_not_verifiable` until it is listed or the account's access to it is taken away.
+  Names are read like `reviewedRoutines` (SQL Server: exact, brackets accepted). A synonym for
+  a masked catalog table is reported as reading it even when listed. A listed object whose dependencies still show a masked read is reported
+  with `reviewed: true` and accepted. Your statement, not a check; `npm run check-context`
+  validates it ("Reviewed views").
 - **table.approxRowCount**: shown to the model next to the table name.
 - **table.domain**, **table.tags**: free labels, returned by the `list_tables` tool.
 - **catalog.version** (root level): any string or number. It is recorded in each
@@ -320,10 +332,11 @@ columns (1.29.2 and earlier applied only the first key). Keep one key per table 
 wizard, the vault and `check-context` read the three places through one module, so they
 cannot disagree about what is masked.
 
-A mask is Rosie's own refusal. For the database to refuse the column too, give the
-read-only user no privilege on it (`docs/INSTALL.md`, Step 2; `npm run grants` prints the
-statements); Rosie reports at startup and every 15 minutes whether it can still read each
-masked column. A mask entry for a table or column the catalog does not list keeps the
+A mask is Rosie's own refusal. For the database to refuse the column too, use strict mode
+(`ROSIE_MASKING_MODE=strict`), in which the read-only user has no privilege on it
+(`docs/INSTALL.md`, Step 2; `npm run grants` prints the statements). In express mode, the
+default, the account can read it and the validator is the layer. Rosie reports at startup
+and every 15 minutes whether it can still read each masked column. A mask entry for a table or column the catalog does not list keeps the
 context out of "masked by the database". On SQL Server column grants do not stop `PIVOT`;
 see `docs/SQLSERVER.md` for the design that does.
 

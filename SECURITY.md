@@ -14,14 +14,17 @@ engine version (`package.json`).
 
 **Defense in depth (do not weaken one layer because another exists).** AST validator with a
 catalog-derived allowlist and PII mask, SELECT-only database user verified at startup and
-every 15 minutes, column privileges that deny the masked columns to that user (checked and
-reported per context, and required before answering with `ROSIE_REQUIRE_COLUMN_GRANTS=true`;
-written by `npm run init -- --create-ro-user` or printed by `npm run grants`, never changed by
-the server; on MySQL they do not cover joins `USING` a masked column, histograms or definer
+every 15 minutes, and in strict mode (`ROSIE_MASKING_MODE=strict`) column privileges that
+deny the masked columns to that user (checked and reported per context, and required before
+answering unless `ROSIE_REQUIRE_COLUMN_GRANTS=false`; written by
+`npm run init -- --masking=strict --create-ro-user` or printed by `npm run grants`, never
+changed by the server; on MySQL they do not cover joins `USING` a masked column, histograms or definer
 stored functions, which the validator refuses and the grant check reports; on SQL Server
-they do not stop `PIVOT`, which only the validator stops),
+they do not stop `PIVOT`, which only the validator stops; the check is an allowlist: anything the account can read or execute beyond the catalog tables and the reviewed objects holds the context; within what the check enumerates, an object it does not recognise is held, not passed, and the paths that are not objects are named gaps),
 prompt-injection and write-intent filters before the model, signed answer
 handles for follow-ups, per-request budgets, rate and concurrency limits, durable audit trail.
+In express mode, the default, the database account can read the masked columns and the
+validator is the layer that refuses them.
 
 **Dependencies.** Run `npm run audit:deps` (`npm audit --audit-level=high`) before each
 deployment. Install with `npm ci` only; `.npmrc` refuses Node versions below 22.

@@ -12,7 +12,7 @@ DB_HOST=db.internal
 DB_PORT=1433
 DB_DATABASE=Sales            # the database that holds the business data
 DB_SCHEMA=dbo                # the ONE schema Rosie reads (default: dbo)
-DB_SSL=true                  # true (encrypt and verify the certificate), no-verify, or unset
+DB_SSL=true                  # true (encrypt and verify the certificate), no-verify, or unset; any other value stops the server
 DB_ENGINE_DATABASE=rosie     # database for Rosie's own four tables (audit, certificates, feedback, rate limits)
 DB_RO_USER=rosie_readonly
 DB_RO_PASSWORD=...
@@ -24,8 +24,11 @@ it creates the read-only login only with `--create-ro-user` and the engine table
 
 ```bash
 npm run init -- --url 'mssql://user:password@host:1433/Sales' --name "My Project" \
-                --create-ro-user --create-engine-tables --engine-db rosie
+                --create-ro-user --create-engine-tables
 ```
+
+In express mode, the default, Rosie's own tables go to a separate database, `rosie`, unless you
+pass `--engine-db same`.
 
 By hand: create the engine tables from `db/schema.mssql.sql` and generate the catalog with
 `DB_DIALECT=mssql npm run generate-catalog`. The steps are those of `docs/INSTALL.md`; this
@@ -64,6 +67,12 @@ generate-catalog` and `npm run init` read the business database with `DB_USER`, 
 login also needs to read its metadata there, or run those commands with another account.
 
 ## The read-only login
+
+This is strict mode. In express mode, the default, the login gets `GRANT SELECT ON
+SCHEMA::dbo` and Rosie's validator is what refuses the masked columns
+([INSTALL.md](INSTALL.md#choosing-a-masking-mode)). On SQL Server column grants end at
+"masked by Rosie only" anyway (below), so strict mode needs the reviewed-view design. In
+strict mode:
 
 ```sql
 CREATE LOGIN rosie_readonly WITH PASSWORD = '...';
@@ -168,13 +177,39 @@ Rosie runs the check at startup and every 15 minutes, as the read-only login:
   owner returns the masked columns to anyone allowed to use it, whatever the column grants
   (ownership chaining). One that reads a masked column is reported (`view_reads_masked`)
   unless it is a reviewed catalog view;
+- since 1.32.0, an allowlist: every object of the current database the login has `SELECT`,
+  `EXECUTE` or a column grant on (tables, views, synonyms, table and scalar functions,
+  procedures, CLR and aggregate functions, extended procedures) that is neither a catalog
+  table nor reviewed is `object_not_verifiable`, a static procedure such as
+  `SELECT InvoiceId, Total FROM dbo.Invoice` included; so is every linked server with data
+  access (the login cannot see `sys.linked_logins`, so a mapping cannot be ruled out) and
+  every other user database the login can open (`master`, `tempdb`, `model`, `msdb`
+  skipped). List tables, views and synonyms in `"reviewedViews"` and functions and procedures
+  in `"reviewedRoutines"` at the top of `schema-catalog.json`, or take the permission away;
+  linked servers and other databases can only be removed. A synonym for a masked catalog table
+  is reported as reading it (`view_reads_masked`, kind `synonym`), and listing it does not
+  accept it: a synonym is the table. Entries compare exactly as (schema, name) pairs, and
+  `[dbo].[p_totals]` (with `]]` for a bracket inside) or `"dbo"."p_totals"` are accepted. The
+  dependency walk runs only on reviewed objects and catalog views; what it shows is reported,
+  listed or not, and `npm run grants -- --verify` warns about a listed object that uses `*` or
+  dynamic SQL. Rather than listing, consider whether the login needs `EXECUTE` on any
+  procedure;
 - cross-database ownership chaining, in the database and on the server.
 
 What it cannot establish makes the result `not verified on SQL Server`
 (`sqlserver_not_verified`, hold code `E_COLUMN_GRANTS_SQLSERVER_NOT_VERIFIED`): an object the
 login may use but cannot see into (grant `VIEW DEFINITION` on it and on what it reads, or
 remove the access), a reference to another database, cross-database ownership chaining being
-on, more than 200 objects, or a `PIVOT` probe that could not be written. Since 1.31.0 that
+on, more than 200 objects, a procedure or function held as above, or a `PIVOT` probe that
+could not be written. Not covered: statement text of other sessions in `sys.dm_exec_*` for a
+login with `VIEW SERVER STATE`, and the history of a temporal catalog table read through
+`FOR SYSTEM_TIME` (the table's own grant; a history table outside the catalog is held), and
+an object an administrator creates in `dbo` with one of the exact diagram names and types and flags as shipped (`sp_MS_marksystemobject`). Objects flagged as shipped by Microsoft are not trusted: only the
+database-diagram objects SQL Server creates in `dbo` are skipped when flagged, each by its
+exact name and type (the table `sysdiagrams`, the scalar function `fn_diagramobjects`, and the
+procedures `sp_alterdiagram`, `sp_creatediagram`, `sp_dropdiagram`,
+`sp_helpdiagramdefinition`, `sp_helpdiagrams`, `sp_renamediagram` and `sp_upgraddiagrams`). No independent reviewer has reproduced the SQL Server results; they were
+established on a live SQL Server 2022 CU23. Since 1.31.0 that
 result means only this; it no longer means that the check was never run on a live server.
 
 Other facts from the live run: a column `DENY` beats a table, schema or `db_datareader`

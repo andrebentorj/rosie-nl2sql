@@ -12,7 +12,7 @@ DB_HOST=db.internal
 DB_PORT=5432
 DB_DATABASE=sales            # the database that holds the business data
 DB_SCHEMA=public             # the ONE schema Rosie reads (default: public)
-DB_SSL=true                  # true (verify the certificate), no-verify, or unset
+DB_SSL=true                  # true (verify the certificate), no-verify, or unset; any other value stops the server
 DB_ENGINE_DATABASE=rosie     # database for Rosie's own four tables (audit, certificates, feedback, rate limits)
 DB_ENGINE_SCHEMA=public      # schema for those tables inside it (default: public)
 DB_RO_USER=rosie_readonly
@@ -54,6 +54,11 @@ generate-catalog` and `npm run init` read the business schema with `DB_USER`, so
 also needs to read it, or run those commands with another account.
 
 ## The read-only role
+
+This is strict mode. In express mode, the default, the role gets `CONNECT` on the database,
+`USAGE` on the schema and `SELECT ON ALL TABLES IN SCHEMA`, and Rosie's validator is what
+refuses the masked columns ([INSTALL.md](INSTALL.md#choosing-a-masking-mode)). In strict
+mode:
 
 Grant it table by table, and column by column on the tables that have masked columns: the
 unmasked columns only. Do not use `GRANT SELECT ON ALL TABLES IN SCHEMA`: it is a table-level
@@ -110,12 +115,30 @@ when the names are not lower case, must fail with `42501` (permission denied). R
 asks every role the account is a member of, and reports the result in `/health`
 ([INSTALL.md](INSTALL.md#check-what-the-read-only-account-can-read)). A column privilege does
 not reach through a view, which reads with its owner's rights: mask the view's column too,
-or leave the view out of the catalog. Since 1.31.0 the check also follows, through
-`pg_depend`, every view and materialized view that reads a masked column (views over views
-included) and reports one the account or a role it can switch to can read
-(`view_reads_masked`), unless it is a catalog view marked `"reviewedView": true`; and a
-catalog view without that mark keeps the result at "masked by Rosie only"
-(`view_not_reviewed`). It also walks the partitions, inheritance children and parents of
+or leave the view out of the catalog. A catalog view without `"reviewedView": true` keeps
+the result at "masked by Rosie only" (`view_not_reviewed`). Since 1.32.0 the check is an
+allowlist: anything the role, or a role it can switch to, can read or execute beyond the
+catalog tables and the reviewed objects is `object_not_verifiable`, whatever it reads. It
+enumerates every table, partitioned table, view, materialized view and foreign table outside
+the system schemas with `SELECT` on some column and `USAGE` on the schema (a materialized view
+filled through a function and a sibling view over the base table of a catalog view included);
+every routine that is `SECURITY DEFINER`, granted beyond `PUBLIC` (`pg_read_file`,
+`pg_read_binary_file`, `pg_ls_dir`, `lo_import`, `lo_export`, `dblink_connect_u` and the like)
+or an untrusted-language function; every foreign server with `USAGE` and a user mapping for it,
+`PUBLIC` or a member role (`dblink` runs any statement there as the mapped user); and large
+objects it may read. It skips extension-owned relations and functions (unless
+`SECURITY DEFINER` or granted beyond `PUBLIC`, and except an extension's view or materialized
+view that reads outside the extension), sequences, trusted invoker functions, and routines in
+a schema the role has no `USAGE` on. Catalog names match exactly: a table `public.customer`
+beside the catalog's `"Customer"` is outside. A view
+created `WITH (security_invoker = true)` is allowed: it reads with the role's own privileges.
+Resolve each by review or revocation: list a relation in `"reviewedViews": [ "schema.name" ]`
+at the top of `schema-catalog.json` (a catalog view or foreign table takes
+`"reviewedView": true`) or a routine in `"reviewedRoutines"`, or take the privilege away; a
+foreign server, a file or large-object function and large objects can only be taken away. A reviewed view whose
+dependencies show a masked read is reported (`view_reads_masked` detail with `reviewed: true`)
+and accepted, as your statement. The 1.31.0 check followed only column dependencies, which a
+view that takes a whole row (`to_jsonb(c)`) beside an unmasked column does not leave. It also walks the partitions, inheritance children and parents of
 every masked table (each is a table with its own privileges, and a schema-wide grant gives
 one to every partition; `postgres_inheritance_reads_masked`), and lists every
 `SECURITY DEFINER` function or procedure outside `pg_catalog` and `information_schema` that
@@ -123,24 +146,28 @@ the role or one of its roles may execute (`EXECUTE` goes to `PUBLIC` by default)
 function is never passed on its text: it is `object_not_verifiable` unless it is listed in
 `"reviewedRoutines"` at the top of `schema-catalog.json` (`"schema.name"`, read as
 PostgreSQL resolves a name: an unquoted part folds to lower case, a double-quoted part keeps
-its case, so `rosie.F_Clean` means `f_clean` and `rosie."F_Clean"` means `F_Clean`). A
-listing is by name and covers every overload of that exact name, present and future: it is
-your statement, not a check. A listed one whose body names a masked column is still
-`view_reads_masked` and keeps the result at "masked by Rosie only". `npm run -s grants` prints the `REVOKE` and `GRANT` statements for the
+its case, so `rosie.F_Clean` means `f_clean` and `rosie."F_Clean"` means `F_Clean`; since
+1.32.0 compared as a (schema, name) pair, so `"a.b".c` and `a."b.c"` differ). A listing is by
+name and covers every overload of that exact name, present and future: it is your statement,
+not a check. A listed one whose body names a masked column is still `view_reads_masked` and
+keeps the result at "masked by Rosie only". One that uses `*`, a whole-row reference
+(`RETURNS SETOF <table>`, `to_jsonb`) or dynamic SQL is accepted, with a warning from
+`npm run grants -- --verify`: review it by hand. `npm run -s grants` prints the `REVOKE` and `GRANT` statements for the
 role as it is, PUBLIC, role memberships, default privileges and grants on partitions and
 inheritance relatives included ([PILOT_ONBOARDING.md](PILOT_ONBOARDING.md)); it does not
 revoke views or functions.
 
-With column grants, the check passing and `ROSIE_REQUIRE_COLUMN_GRANTS=true`, PostgreSQL
-refuses any statement that reaches a masked column of a catalog table, including joins
-`USING` it (42501), which MySQL does not. When the check passes, as of its last run: the
-database refuses every statement that reaches a masked column of a catalog table, for the
-account and every role it is a member of, including through the table's partitions,
-inheritance children and parents, through any view that depends on the column, and through
-`SECURITY DEFINER` functions the account may execute (each held until it is listed in
-`"reviewedRoutines"`, your statement). Not covered: copies of the values
-elsewhere, what unmasked columns reveal, what a reviewed view really exposes, objects created
-since the last check. No independent review of 1.31.0 has happened yet.
+In strict mode (column grants, the check passing and the gate on, its default there),
+PostgreSQL refuses a statement that names a masked column of a catalog table, including joins
+`USING` it (42501), which MySQL does not. The claim, as of the check's last run, is that the database denies this account every masked column Rosie knows how to reach, on these engines, with named gaps: the account and every role it is a member of are denied the masked columns,
+directly and through the table's partitions, inheritance children and parents, and the
+check is an allowlist: anything the account can read or execute beyond the catalog tables and the reviewed objects holds the context; within what the check enumerates, an object it does not recognise is held, not passed, and the paths that are not objects are named gaps. Not covered: what a reviewed object really returns,
+`LISTEN`/`NOTIFY` payloads, statement text of other sessions for a member of
+`pg_read_all_stats`, other databases on the same server, a table added to an extension with `ALTER EXTENSION ... ADD TABLE`, and any view or materialized view of that extension over it (an administrator act that cannot be told apart from what the extension ships, such as PostGIS's `spatial_ref_sys`), copies of the values elsewhere, what
+unmasked columns reveal, objects created since the last check. Two independent reviews of 1.31.0 found the whole-row view, foreign
+table, `dblink` and inheritance-view paths that 1.32.0 now holds
+([Corrections](SECURITY_OVERVIEW.md#corrections)); 1.32.0 has not been reviewed
+independently.
 
 A `SECURITY DEFINER` function anywhere in the database that `PUBLIC` may execute holds
 every context on that database until it is listed in `"reviewedRoutines"` or its `EXECUTE`

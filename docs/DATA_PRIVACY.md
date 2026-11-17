@@ -45,22 +45,31 @@ with the key in `OPENAI_API_KEY`.
 
 ## Kept out of what is sent
 
-- **Masked columns.** Columns in `masked-columns.json` are absent from the schema metadata
-  Rosie writes, refused by the SQL validator when it finds them in a statement, left out of
-  `sample_rows` and refused by `lookup_values`. This is Rosie's own reading of SQL.
-  Independent reviews have found ways around it more than once, most recently in 1.29.2
-  (see the advisory in [SECURITY_OVERVIEW.md](SECURITY_OVERVIEW.md)), and the database
-  account can still read those columns unless you take the privilege away. With the
-  privilege taken away, a statement that reaches a masked column is refused by your
-  database, whatever Rosie's own checks miss, except through a view, a function or a copy of
-  the column that the account can read, and except two engine limits: on MySQL a join
+- **Masked columns.** What protects them depends on the masking mode,
+  `ROSIE_MASKING_MODE` ([INSTALL.md](INSTALL.md#choosing-a-masking-mode)). In express mode,
+  the default since 1.32.0, Rosie refuses statements that reach a masked column and leaves
+  masked columns out of what it describes to the model. This is Rosie's own reading of SQL;
+  independent reviews have found ways around it before (see Corrections in
+  [SECURITY_OVERVIEW.md](SECURITY_OVERVIEW.md#corrections)), and the database account can
+  read those columns. In strict mode the same holds, and the read-only account also has no
+  privilege on them, verified at startup. In both modes columns in `masked-columns.json` are
+  absent from the schema metadata Rosie writes, refused by the SQL validator when it finds
+  them in a statement, left out of `sample_rows` and refused by `lookup_values`.
+  The most recent way around the validator was found in 1.29.2 (see the advisory in
+  [SECURITY_OVERVIEW.md](SECURITY_OVERVIEW.md)). With the
+  privilege taken away (strict mode), the claim is that the database denies this account every masked column Rosie knows how to reach, on these engines, with named gaps. The check probes
+  the masked columns (also through roles, PostgreSQL partitions and inheritance relatives, and
+  MySQL histograms) and is an allowlist: anything the account can read or execute beyond the catalog tables and the reviewed objects holds the context; within what the check enumerates, an object it does not recognise is held, not passed, and the paths that are not objects are named gaps. The review markers are your
+  statement. A copy of the column the account can read is not covered, nor
+  two engine limits: on MySQL a join
   `USING` a masked column or a `NATURAL JOIN` (MySQL does not check those join columns), and
   on SQL Server a `PIVOT` (column grants do not stop it there). Rosie's validator refuses
   both. Rosie checks the account at startup and every 15 minutes and reports "masked by the
   database" or "masked by Rosie only" in `/health`; on SQL Server, with column grants, the
-  honest result is "masked by Rosie only" ([SQLSERVER.md](SQLSERVER.md)). With
-  `ROSIE_REQUIRE_COLUMN_GRANTS=true` a context that is not "masked by the database" (or "no
-  masked columns") answers nothing. On MySQL the database also does not stop a histogram of
+  honest result is "masked by Rosie only" ([SQLSERVER.md](SQLSERVER.md)). In strict mode
+  (where `ROSIE_REQUIRE_COLUMN_GRANTS` defaults to `true`) a context that is not "masked by
+  the database" (or "no masked columns") answers nothing; in express mode it answers, unless
+  you set `ROSIE_REQUIRE_COLUMN_GRANTS=true`, which always wins over the mode's default. On MySQL the database also does not stop a histogram of
   a masked column created between two checks or a definer stored function the account can
   execute; Rosie's validator refuses both (since 1.31.0 MySQL functions are allowlisted) and
   the check reports the routines. Rosie's own description
@@ -93,9 +102,10 @@ with the key in `OPENAI_API_KEY`.
   relationship that ends on a masked column and a masked primary key are not named to the
   model either, and an explanation of an earlier answer is refused when its statement is no
   longer allowed; since 1.30.0 the same holds for the previous answer of a follow-up.
-  Masking is the control for personal data: list every column that holds it, and take the
-  `SELECT` privilege on those columns away from the read-only account
-  ([INSTALL.md](INSTALL.md), Step 2), so that the mask does not rest on Rosie alone. Column
+  Masking is the control for personal data: list every column that holds it. When the
+  data is sensitive, use strict mode, which takes the `SELECT` privilege on those columns
+  away from the read-only account ([INSTALL.md](INSTALL.md), Step 2), so that the mask does
+  not rest on Rosie alone. Column
   privileges do not reach through a view, which reads with its owner's rights: mask the
   view's column too, or leave the view out of the catalog, and mark a catalog view you
   reviewed with `"reviewedView": true` (since 1.31.0 the check requires it). `npm run generate-catalog` prints the column names
@@ -112,6 +122,14 @@ with the key in `OPENAI_API_KEY`.
   database and to a local file. Nothing is reported to the vendor of Rosie: the software
   makes no calls other than to your database, your model provider and, when JWT verification
   is configured with a key URL, your identity provider.
+
+**Upgrading to 1.32.0.** An installation upgrading from 1.30 or 1.31 without
+`ROSIE_MASKING_MODE` runs in express mode: fewer warnings, and the same protection as before
+(the check still runs, and the gate was off by default). `ROSIE_REQUIRE_COLUMN_GRANTS`
+defaults to `false` in express and `true` in strict, and an explicit value always wins, so an
+installation that set it to `true` keeps its gate. If your read-only account already has
+table and column grants, set `ROSIE_MASKING_MODE=strict` to keep them verified with the
+gate on by default ([INSTALL.md](INSTALL.md#upgrading)).
 
 ## What the provider does with it
 
@@ -146,7 +164,7 @@ Two cautions, stated plainly:
   allowlist, masking, row policies and the Answer Certificate are deterministic code that
   runs in your server whatever model is behind `AI_BASE_URL`. A weaker model produces more
   refusals and more flagged answers. What the validator misses does not depend on the
-  model; the database's column privileges cover that.
+  model; in strict mode the database's column privileges cover that.
 
 Self-hosted endpoints have not been part of the automated test suite of this repository;
 `test:provider` is the check to run on yours.
