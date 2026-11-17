@@ -172,27 +172,28 @@ Rosie runs the check at startup and every 15 minutes, as the read-only login:
   `IMPERSONATE ANY LOGIN` and `CONTROL SERVER`; each makes every masked column reachable and
   is named as the role (`readable[].roles`);
 - a `PIVOT` probe per masked column, over a column the login can read;
-- every view, table function, scalar function and procedure the login may use (up to 200),
-  followed through `sys.dm_sql_referenced_entities`. A view or function owned by the table's
-  owner returns the masked columns to anyone allowed to use it, whatever the column grants
-  (ownership chaining). One that reads a masked column is reported (`view_reads_masked`)
-  unless it is a reviewed catalog view;
-- since 1.32.0, an allowlist: every object of the current database the login has `SELECT`,
-  `EXECUTE` or a column grant on (tables, views, synonyms, table and scalar functions,
-  procedures, CLR and aggregate functions, extended procedures) that is neither a catalog
-  table nor reviewed is `object_not_verifiable`, a static procedure such as
+- an allowlist (since 1.32.0): every object of the current database the login has `SELECT`,
+  `EXECUTE`, `RECEIVE` or a column grant on, of any type except the ones that cannot return
+  data (constraints, defaults, rules, triggers, internal and system tables, table types, plan
+  guides and sequences; since 1.32.1 this is an exclude list, so an external table, a service
+  queue or a type Rosie does not name is listed too), that is neither a catalog table nor
+  reviewed is `object_not_verifiable`. A view or function owned by the table's owner returns
+  the masked columns to anyone allowed to use it, whatever the column grants (ownership
+  chaining), which is why every such object counts, a static procedure such as
   `SELECT InvoiceId, Total FROM dbo.Invoice` included; so is every linked server with data
   access (the login cannot see `sys.linked_logins`, so a mapping cannot be ruled out) and
   every other user database the login can open (`master`, `tempdb`, `model`, `msdb`
-  skipped). List tables, views and synonyms in `"reviewedViews"` and functions and procedures
+  skipped). List tables, views, synonyms and other data objects (an external table, a queue) in
+  `"reviewedViews"` and functions and procedures
   in `"reviewedRoutines"` at the top of `schema-catalog.json`, or take the permission away;
   linked servers and other databases can only be removed. A synonym for a masked catalog table
   is reported as reading it (`view_reads_masked`, kind `synonym`), and listing it does not
   accept it: a synonym is the table. Entries compare exactly as (schema, name) pairs, and
   `[dbo].[p_totals]` (with `]]` for a bracket inside) or `"dbo"."p_totals"` are accepted. The
-  dependency walk runs only on reviewed objects and catalog views; what it shows is reported,
-  listed or not, and `npm run grants -- --verify` warns about a listed object that uses `*` or
-  dynamic SQL. Rather than listing, consider whether the login needs `EXECUTE` on any
+  dependency walk (`sys.dm_sql_referenced_entities`, up to 200 objects) runs only on reviewed
+  objects and catalog views; a masked column it finds is reported (`view_reads_masked`, accepted
+  for a reviewed view, never for a routine), and `npm run grants -- --verify` warns about a
+  listed object that uses `*` or dynamic SQL. Rather than listing, consider whether the login needs `EXECUTE` on any
   procedure;
 - cross-database ownership chaining, in the database and on the server.
 
@@ -204,7 +205,7 @@ on, more than 200 objects, a procedure or function held as above, or a `PIVOT` p
 could not be written. Not covered: statement text of other sessions in `sys.dm_exec_*` for a
 login with `VIEW SERVER STATE`, and the history of a temporal catalog table read through
 `FOR SYSTEM_TIME` (the table's own grant; a history table outside the catalog is held), and
-an object an administrator creates in `dbo` with one of the exact diagram names and types and flags as shipped (`sp_MS_marksystemobject`). Objects flagged as shipped by Microsoft are not trusted: only the
+an object an administrator creates in `dbo` with one of the exact diagram names and types and flags as shipped (`sp_MS_marksystemobject`), and `VIEW CHANGE TRACKING` on a change-tracked table, with which `CHANGETABLE` returns the primary key values of its changed rows (a permission, not an object the allowlist lists; untested). Objects flagged as shipped by Microsoft are not trusted: only the
 database-diagram objects SQL Server creates in `dbo` are skipped when flagged, each by its
 exact name and type (the table `sysdiagrams`, the scalar function `fn_diagramobjects`, and the
 procedures `sp_alterdiagram`, `sp_creatediagram`, `sp_dropdiagram`,

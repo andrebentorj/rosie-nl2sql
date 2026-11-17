@@ -49,6 +49,13 @@ GRANT UPDATE, DELETE ON rosie_rate_limit TO rosie_app;
 GRANT SELECT, DELETE ON rosie_audit_log, rosie_answer_certificate, rosie_feedback TO rosie_retention;
 ```
 
+A new PostgreSQL database gives `CONNECT` to `PUBLIC`. Since 1.32.1 `npm run init` revokes
+it when it creates the engine database and grants `CONNECT` only to the account that ran it;
+with a different main role (this page's `rosie_app`, or a `DB_USER` changed later) run the
+`GRANT CONNECT ON DATABASE rosie TO rosie_app;` above yourself. When the database already
+existed the wizard changes nothing and prints how to limit it:
+`REVOKE CONNECT ON DATABASE rosie FROM PUBLIC; GRANT CONNECT ON DATABASE rosie TO rosie_app;`.
+
 `npm run doctor` checks that the tables are there, not these grants. `npm run
 generate-catalog` and `npm run init` read the business schema with `DB_USER`, so that role
 also needs to read it, or run those commands with another account.
@@ -166,7 +173,7 @@ check is an allowlist: anything the account can read or execute beyond the catal
 `pg_read_all_stats`, other databases on the same server, a table added to an extension with `ALTER EXTENSION ... ADD TABLE`, and any view or materialized view of that extension over it (an administrator act that cannot be told apart from what the extension ships, such as PostGIS's `spatial_ref_sys`), copies of the values elsewhere, what
 unmasked columns reveal, objects created since the last check. Two independent reviews of 1.31.0 found the whole-row view, foreign
 table, `dblink` and inheritance-view paths that 1.32.0 now holds
-([Corrections](SECURITY_OVERVIEW.md#corrections)); 1.32.0 has not been reviewed
+([Corrections](SECURITY_OVERVIEW.md#corrections)); 1.32.0 and 1.32.1 have not been reviewed
 independently.
 
 A `SECURITY DEFINER` function anywhere in the database that `PUBLIC` may execute holds

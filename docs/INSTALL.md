@@ -290,7 +290,14 @@ in the database: the questions, statements and answers of every user. Rosie's va
 refuses those tables, because they are not in the catalog, but the database does not. Since
 1.32.0 the express wizard puts them in a separate database, `rosie`, by default
 (`DB_ENGINE_DATABASE`, Step 3); `--engine-db same` is the explicit way back to the shared
-layout. An installation set up earlier with them in the business database keeps that layout
+layout. On PostgreSQL, when the wizard creates that database, it revokes `CONNECT` from
+`PUBLIC` and grants it only to the account that ran the wizard (since 1.32.1). If the main
+account (`DB_USER`) is a different role, as with a separate `rosie_app`, or you change
+`DB_USER` later, grant it yourself:
+`GRANT CONNECT ON DATABASE rosie TO rosie_app;` and the table grants in
+[POSTGRES.md](POSTGRES.md#the-engine-database-and-the-main-role). When the database already
+existed, the wizard leaves it as it is and prints a line saying that `PUBLIC` keeps `CONNECT`
+there, with the statements to limit it. An installation set up earlier with them in the business database keeps that layout
 until you move them, or use strict mode, which grants only the catalog's tables.
 
 The column-grant check below still runs. In express mode a context with masked columns is
@@ -743,13 +750,13 @@ This is what the evidence supports today:
   away. Not covered: statement text of other sessions in `sys.dm_exec_*` for a login with
   `VIEW SERVER STATE`, and the history table of a temporal catalog table read through
   `FOR SYSTEM_TIME` (that is the catalog table's own grant; a history table outside the
-  catalog is held), and an object an administrator creates in `dbo` with one of the exact diagram names and types and flags as shipped (`sp_MS_marksystemobject`). It is the weakest of the three claims. Common Criteria mode
+  catalog is held), and an object an administrator creates in `dbo` with one of the exact diagram names and types and flags as shipped (`sp_MS_marksystemobject`), and `VIEW CHANGE TRACKING` on a change-tracked table, with which `CHANGETABLE` returns the primary key values of its changed rows (a permission, not an object the allowlist lists; untested). It is the weakest of the three claims. Common Criteria mode
   and application roles are untested. No independent reviewer has reproduced
   the SQL Server results; they were established on a live SQL Server 2022 CU23.
 
 Two independent reviews of 1.31.0 found readable paths that this claim, as 1.31.0 worded it,
 did not cover; 1.32.0 closes them and narrows the claim (the 1.32.0 rows of
-[Corrections](SECURITY_OVERVIEW.md#corrections)). 1.32.0 itself has not been reviewed
+[Corrections](SECURITY_OVERVIEW.md#corrections)). 1.32.0 and 1.32.1 have not been reviewed
 independently.
 
 On every engine the check does not cover: what a reviewed object really exposes (the
