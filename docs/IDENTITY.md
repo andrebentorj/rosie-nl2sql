@@ -49,11 +49,29 @@ Verification is done by the [`jose`](https://github.com/panva/jose) library.
 | A JWT | yes | Verified. Valid: the request runs as that user, with claims. Invalid: 401. It never falls back to the static token. |
 | The static token | yes or no | Accepted when it matches `ROSIE_API_TOKEN`. No claims, so row policies refuse restricted tables. |
 | Nothing | JWT only, no static token | 401. |
+| No `Authorization` header, chat page on | any | The chat page's session cookie decides ([CHAT_PAGE.md](CHAT_PAGE.md)). Valid: the request runs as the person who signed in, with the claims of their ID token. Missing, expired or signed out: 401 `E_SIGNIN_REQUIRED`. From another origin: 403 `E_CSRF`. |
 
 With a verified identity, the `user` object the widget may send in the request body is
 ignored: the token says who the user is. Answer handles are bound to the verified user id, so
 a handle minted for one user cannot be redeemed by another, and whatever it runs is filtered
 by the redeemer's own claims.
+
+## The chat page
+
+When Rosie serves its own chat page (`ROSIE_CHAT_PAGE=true`), the person signs in with an
+OpenID Connect provider and the claims of their verified ID token become the identity of
+every request the page makes, through the same path as a verified JWT: `ROSIE_JWT_NAME_CLAIM`
+and `ROSIE_JWT_CLAIM_MAP` apply, and row policies read the same claims. Differences: the
+user id defaults to the verified address in lower case (a provider's `sub` is opaque and, at
+Microsoft, differs per application; at Microsoft the address is the tenant's sign-in name,
+`preferred_username`, else `upn`, never the unverified `email` claim, and
+`ROSIE_JWT_USER_CLAIM=oid` gives an id nobody can rename; at a generic provider only with
+`email_verified` true), and `ROSIE_JWT_USER_CLAIM`
+changes it when set (string values only); `groups` and `roles` are kept whole only when a row
+policy or `ROSIE_JWT_CLAIM_MAP` reads them; and the claims kept are `sub`, `iss`, `email`, `email_verified`, `name`, `preferred_username`,
+`upn`, `oid`, `tid`, `hd`, `groups`, `roles`, plus every claim the map and the user and name
+settings name. `ROSIE_JWT_ISSUER` is not needed for the page. Details in
+[CHAT_PAGE.md](CHAT_PAGE.md).
 
 ## Administrators
 

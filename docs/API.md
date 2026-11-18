@@ -7,7 +7,19 @@ configured) on the routes that answer or record something: `/ask`, `/export`, `/
 `/feedback` and `/certify`. `GET /project-info`, `GET /health` and `GET /widget.js` are
 public. `/metrics` and `/admin/*` take their own credentials, described with each route. In
 production the shared token is injected by the host app's proxy, never by the browser (see
-`docs/INSTALL.md`). Rate limits are per client IP and per route group (`/ask`, `/export`,
+`docs/INSTALL.md`). Since 1.35.0, with Rosie's own chat page on (`ROSIE_CHAT_PAGE=true`,
+[CHAT_PAGE.md](CHAT_PAGE.md)), a request with no `Authorization` header is authenticated by the
+page's session cookie instead: the person who signed in is the verified identity (as with a
+JWT), a missing, expired or signed-out session answers `401`
+`{ "error": "Sign in again to continue.", "code": "E_SIGNIN_REQUIRED" }`, and a request with
+the cookie that changes anything must come from the page's exact origin and carry
+`X-Rosie-CSRF` with the session's token, or it answers `403`
+`{ "error": "This request did not come from the chat page.", "code": "E_CSRF" }` (counted and
+audited as a refusal with reason `csrf_refused`). Requests with an `Authorization` header are
+unchanged. With the page on, the API never answers without a session, a valid token or a
+valid JWT: the "no token configured, development, open" rule does not apply. Rate limits are
+per verified person (the chat page's session or a verified JWT, since 1.35.0) or else per
+client IP, and per route group (`/ask`, `/export`,
 `/explain`, `/feedback` and `/certify` each count on their own):
 `AI_MAX_QUERIES_PER_HOUR` / `AI_MAX_QUERIES_PER_DAY`, plus `AI_CONCURRENCY_LIMIT` in-flight
 requests per process. The MCP surface is documented separately in `docs/MCP_SERVER.md`; both
@@ -182,7 +194,9 @@ Response `200`:
   "reason": "prompt_injection" }`). Since 1.33.0 both leave an audit row (`status=blocked`,
   `rejection_reason` `input_too_long` or `prompt_injection_detected`).
 
-Errors: `400` invalid body or question, `401` bad token, `404` assistant disabled
+Errors: `400` invalid body or question, `401` bad token (`E_SIGNIN_REQUIRED` for the chat
+page's session), `403` `E_CSRF` (chat page session from another origin or without its token),
+`404` assistant disabled
 (`AI_ASSISTANT_ENABLED=false`, or no model key is set), `429` rate limited
 (`Retry-After`, `code: "E_RATE_LIMITED"`), `503` security hold, busy (`code: "E_BUSY"`,
 `Retry-After: 5`, `retryAfter: 5`) or audit policy, or no credential configured with
@@ -209,7 +223,7 @@ Since 1.33.0 a `401`, a `429`, a busy `503`, a security or column-grant hold and
 audit-policy refusal are each counted (`rosie_refused_total{route,reason}`,
 [MONITORING.md](MONITORING.md)) and leave an audit row with `status=refused`,
 `rejection_reason` `unauthenticated`, `rate_limited`, `busy`, `security_hold`,
-`column_grants_hold` or `audit_unavailable`, the person (the host's `user.id` under the
+`column_grants_hold`, `audit_unavailable` or (1.35.0) `csrf_refused`, the person (the host's `user.id` under the
 static token, `unauthenticated` for a bad token), the address and the correlation id, and no
 question text. Per route, reason, address (grouped as the rate limiter groups it) and person
 (when the request names one), the first refusal of a minute is written as its own row; when
@@ -348,7 +362,7 @@ Metadata the widget needs before the first question, plus the security gate stat
 {
   "name": "Sales", "fullName": "…", "description": "…", "welcomeMessage": "…",
   "suggestions": [ "…" ], "aiDisclaimer": "…", "governance": { "owner": "…" }, "theme": null,
-  "brand": null, "widgetVersion": "2026.11.18",
+  "brand": null, "widgetVersion": "2026.11.18.2",
   "maxInputLength": 2000,
   "securityHold": false, "securityCode": null, "securityMessage": null, "supportContact": null
 }
@@ -387,6 +401,12 @@ What the widget sends and reads (since 1.33.0, widget 2026.11.17):
   carries `widgetVersion` in its body, so the version is recorded from any origin. Rosie's
   CORS layer allows the header since 1.33.0; a reverse proxy that answers preflights itself
   must list it in `Access-Control-Allow-Headers`.
+- Element attribute `layout` (1.35.0, widget 2026.11.18.2): `page` for a full-page chat with
+  no launcher, opened by itself, filling the element, which the page sizes
+  ([WIDGET.md](WIDGET.md)). On a same-origin page with `<meta name="rosie-csrf-token">`
+  every request carries `X-Rosie-CSRF` with credentials `same-origin` and no
+  `Authorization` (an `api-token` attribute is ignored there); Rosie's chat page is that
+  page. A `403` with `code: "E_CSRF"` is shown with its own message and the code.
 - Element attributes: `locale` (BCP 47; number separators and the CSV rule, default the
   browser's language, else `en`) and `timeout-seconds` (how long it waits for `/ask`,
   default `130`). On a `401` the element dispatches `rosie:auth-expired` (bubbles, composed,

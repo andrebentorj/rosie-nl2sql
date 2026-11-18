@@ -213,6 +213,10 @@ The widget may add thousands separators and trailing zeros to a number, and noth
   a person (the safety filter, a question too long) is kept. When the error body carries a
   `reference`, it is shown on its own line ("Reference: 3f2a9c10") to quote to whoever looks
   after Rosie.
+- **A refused chat-page request** (`403` with `code: "E_CSRF"`, see "Signed in on Rosie's
+  own chat page") says Rosie could not confirm the question came from this page, to reload
+  and ask again, and the code to quote. Any other `403` keeps "Your account cannot use Rosie
+  for this."
 - **A security hold** reads "Rosie is paused", with the server's plain message
   (`securityMessage`), whom to tell (`supportContact` from `project.json`) and the code.
 - **A busy server** (`503` with `code: "E_BUSY"`) is asked again twice, after `retryAfter`
@@ -224,6 +228,7 @@ The widget may add thousands separators and trailing zeros to a number, and noth
 |---|---|---|
 | `locale` | the browser's language, else `en` | BCP 47 tag (`en-GB`, `de-DE`) for number separators and the CSV rule above; the words are always English |
 | `timeout-seconds` | `130` | How long the widget waits for an answer before it stops the question (the server allows 120 s) |
+| `layout` | floating | `page` for a page that is only the chat (see "The full-page layout" below). Anything else, or no attribute, is the floating launcher and panel |
 | `rosie:auth-expired` (event) | | Fired on the element on a `401`; bubbles and crosses the shadow root; `detail.path` is the route. A host page can refresh its token and ask again |
 
 Requests to the widget's own origin carry the header `X-Rosie-Widget-Version`; across
@@ -231,6 +236,54 @@ origins the header is left out, because a server before 1.33.0 refuses it in the
 `/ask` always carries the version in its body (`widgetVersion`), so the server records which
 widget asked from any origin. Rosie's CORS layer allows the header since 1.33.0; a reverse
 proxy that answers CORS preflights itself must allow it too.
+
+## The full-page layout
+
+`layout="page"` is for a page whose whole purpose is the chat, such as the chat page Rosie
+serves itself. The floating mode, the default, does not change at all.
+
+- There is no launcher, no close button and no expand button. "New conversation" stays.
+- The panel opens by itself once `/project-info` has answered (or failed), so the first thing
+  drawn is the project's greeting and chips, or the hold card. It stays open: Escape does not
+  close it, and Tab is not held inside it, so the page's own controls (a "Sign out" link) can
+  be reached. It is a region of the page, not a dialog.
+- The panel fills the element, with no radius and no shadow. The page gives the element its
+  place and size; an element with no height shows nothing. Under a 48px top bar:
+
+  ```html
+  <style>rosie-widget { position: fixed; top: 48px; left: 0; right: 0; bottom: 0; }</style>
+  <rosie-widget layout="page" api-url="/api/assistant"></rosie-widget>
+  ```
+
+  A flex child (`flex: 1; min-height: 0`) works as well.
+- The purple header, the messages, the disclaimer and the input bar keep their full-width
+  backgrounds and hold their content in a centred 880px column, with 12px on each side when
+  the page is narrower. The text keeps the widget's own size (13px).
+- The results screen opens over the page as it does over a host app. Inside a positioned
+  element (`position: fixed` above), it stays under a top bar that sets a `z-index`.
+
+## Signed in on Rosie's own chat page
+
+Rosie's chat page signs people in and keeps them signed in with a session cookie. The widget
+on that page does not need, and does not hold, the deployment's API token:
+
+- The page puts a CSRF token in its head: `<meta name="rosie-csrf-token" content="...">`.
+- When that meta is present and `api-url` is on the page's own origin, every request (the
+  project info, questions, export, explain, feedback) carries the header `X-Rosie-CSRF` with
+  the token and is sent with `credentials: 'same-origin'`, so the session cookie goes with it.
+  The meta is read again at each request, so a token the page replaces is picked up.
+- On such a page an `api-token` attribute is ignored, also when it is set later, and the
+  console says so. No `Authorization` header is sent.
+- A value that is not a plain token (16 to 512 of `A-Z a-z 0-9 . _ ~ + / = -`) is not sent.
+- Across origins the meta is never read and the token never leaves the page. An existing
+  embedding (`api-token`, a same-origin proxy, or a cross-origin `api-url`) works exactly as
+  before.
+- A `401` (the session ended) fires `rosie:auth-expired` as everywhere else; the page decides
+  whether to send the person to sign in again.
+- The server requires the header on every call that is not a `GET` and carries the session
+  cookie, together with an `Origin` equal to the page's public URL; otherwise it answers `403`
+  with `code: "E_CSRF"`. A widget older than this one does not send the header, so the chat
+  page needs this widget or later; the server's own `/api/assistant/widget.js` always matches.
 
 ## Charts
 

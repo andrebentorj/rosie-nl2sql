@@ -1321,6 +1321,11 @@ first question, the engine tables are not where `DB_ENGINE_DATABASE` points (Ste
 Rosie ships a self-contained Web Component. **Two lines of HTML, no file copy.** What it
 shows once it is on the page is in [WIDGET.md](WIDGET.md).
 
+No host application, or people who should use Rosie on its own? Since 1.35.0 Rosie can serve
+its own chat page at `/`, with sign-in through Microsoft Entra ID, Google Workspace or any
+OpenID Connect provider, and every question runs as the person who signed in. Set
+`ROSIE_CHAT_PAGE=true` and follow [CHAT_PAGE.md](CHAT_PAGE.md) instead of this step.
+
 ### 6a. Load the bundle from the backend (recommended)
 
 The backend serves the exact widget it was deployed with at `GET /api/assistant/widget.js`
@@ -1775,6 +1780,26 @@ the release starts refusing. Each note says whether the upgrade changes a grant 
 
    *Widget (2026.11.18).* The string table is English only (the empty second table is
    gone); numbers and CSV files still follow the locale, so nothing on screen changes.
+
+   **Upgrading to 1.35.0.** No grant, no table and no default is changed. New and off by
+   default: the chat page with sign-in (`ROSIE_CHAT_PAGE`, [CHAT_PAGE.md](CHAT_PAGE.md)).
+   While it is off nothing answers at `/`, `/auth/*` or `/chat/*`, as before. Two things you
+   may notice anyway: `npm run doctor` has a "Chat page" section, and a `ROSIE_CHAT_*` or
+   `ROSIE_OIDC_*` setting left in `.env` without `ROSIE_CHAT_PAGE=true` is named in a startup
+   warning. When you turn the page on, the API never answers without a valid chat page
+   session, a valid `ROSIE_API_TOKEN` or a valid JWT, in any environment (401
+   `E_SIGNIN_REQUIRED` otherwise; the "no token in development means open" rule does not
+   apply): embed the widget with a token, or keep it on the chat page. Also new, with or
+   without the page: questions from a verified person (the chat page, or a verified JWT) are
+   counted against the hourly and daily quotas per person instead of per address; requests
+   with the static token are still counted per address. With one provider the page goes straight to it, and on a first visit
+   it tries a silent sign-in (`ROSIE_CHAT_AUTO_REDIRECT`, [CHAT_PAGE.md](CHAT_PAGE.md)).
+
+   *Widget (2026.11.18.2).* A new `layout="page"` attribute for a full-page chat, used by the
+   chat page ([WIDGET.md](WIDGET.md)). An embedded widget looks and behaves as before. A
+   `403` with code `E_CSRF` is shown with its own message. On a page of the API's own origin
+   that carries `<meta name="rosie-csrf-token">`, the widget sends that token and ignores an
+   `api-token` attribute; no embedding has that meta unless you add it.
 4. **Restart every replica**, then run `npm run doctor`. A widget loaded from
    `/api/assistant/widget.js` follows the backend by itself; a copied one must be copied
    again (6b).

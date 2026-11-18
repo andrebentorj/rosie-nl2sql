@@ -116,8 +116,51 @@ curl -s https://rosie.example.com/api/assistant/health
 
 **The API token never goes into a web page.** The proxy does not add it. Either your host
 application's own proxy forwards `/api/assistant/` and adds the token
-(docs/INSTALL.md, Step 6d), or people sign in with JWT (docs/IDENTITY.md). Embedding the
-widget is docs/WIDGET.md.
+(docs/INSTALL.md, Step 6d), or people sign in with JWT (docs/IDENTITY.md), or people use
+Rosie's own chat page (below). Embedding the widget is docs/WIDGET.md.
+
+## 7. The chat page with sign-in (optional)
+
+Rosie can serve its own chat page at `https://rosie.example.com/`: people sign in with
+Microsoft Entra ID, Google Workspace or any OpenID Connect provider, and every question runs
+as the person who signed in. It needs the HTTPS proxy of step 6 (Caddy forwards every path,
+including `/` and `/auth/`, so nothing changes in the Caddyfile). Register Rosie at your
+provider with the redirect URL `https://rosie.example.com/auth/callback` (docs/CHAT_PAGE.md
+has the steps for each provider), then add to `config/.env`:
+
+```bash
+ROSIE_CHAT_PAGE=true
+ROSIE_CHAT_PUBLIC_URL=https://rosie.example.com      # the ROSIE_DOMAIN of step 6, with https://
+ROSIE_CHAT_SESSION_SECRET=<openssl rand -base64 48>
+ROSIE_CHAT_ALLOWED_DOMAINS=example.com               # who may sign in (required with Google)
+TRUST_PROXY=1                                        # required behind Caddy: limits count per address
+
+# One or more providers. Microsoft Entra ID:
+ROSIE_OIDC_MICROSOFT_TENANT=<Directory (tenant) ID>
+ROSIE_OIDC_MICROSOFT_CLIENT_ID=<Application (client) ID>
+ROSIE_OIDC_MICROSOFT_CLIENT_SECRET=<client secret value>
+# Google Workspace:
+# ROSIE_OIDC_GOOGLE_CLIENT_ID=...
+# ROSIE_OIDC_GOOGLE_CLIENT_SECRET=...
+# Any OpenID Connect provider (the button reads "Sign in with <label>"):
+# ROSIE_OIDC_ISSUER=https://login.example.com
+# ROSIE_OIDC_CLIENT_ID=...
+# ROSIE_OIDC_CLIENT_SECRET=...
+# ROSIE_OIDC_LABEL=Okta
+```
+
+Then check and restart:
+
+```bash
+docker compose exec rosie npm run doctor     # "Chat page": the redirect URL, and each provider reachable
+docker compose up -d --force-recreate rosie
+```
+
+Open `https://rosie.example.com/`. With one provider configured it goes straight to the
+provider, and a person already signed in there is signed in to Rosie without a click. The API token is not needed by the page and
+never reaches the browser. With the page on, a request to `/api/assistant/` without an
+`Authorization` header needs a signed-in session; the widget embedded in another application
+with its token works as before.
 
 ## Day to day
 

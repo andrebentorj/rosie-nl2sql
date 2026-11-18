@@ -346,6 +346,7 @@ directory. The contract is in [contexts/example/README.md](docs/CONTEXT_DIRECTOR
 | Run it on SQL Server | [docs/SQLSERVER.md](docs/SQLSERVER.md) |
 | Connect Claude or another AI client | [docs/MCP_QUICKSTART.md](docs/MCP_QUICKSTART.md), [docs/MCP_SERVER.md](docs/MCP_SERVER.md) |
 | Authenticate users with their own tokens | [docs/IDENTITY.md](docs/IDENTITY.md) |
+| Give people a chat page with sign-in (Microsoft, Google, any OIDC provider) | [docs/CHAT_PAGE.md](docs/CHAT_PAGE.md) |
 | Isolate tenants or teams | [docs/ROW_POLICIES.md](docs/ROW_POLICIES.md) |
 | Declare metrics, or import them from dbt or Cube | [docs/METRICS.md](docs/METRICS.md) |
 | Have a person approve the query behind a recurring question | [docs/APPROVED_QUERIES.md](docs/APPROVED_QUERIES.md) |

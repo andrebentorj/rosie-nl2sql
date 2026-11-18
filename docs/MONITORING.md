@@ -38,13 +38,14 @@ does describe how the service is used.
 |---|---|---|
 | `rosie_questions_total` | `status` | One per audit record. For a question: `success`, `error`, `no_query`, `unfinished` (stopped by a limit before an answer query ran; counted under `no_query` until 1.27.0), `clarification`, `blocked`, `aborted`. Exports and explanations write audit records too, and theirs are counted here as `other` |
 | `rosie_blocked_total` | `reason` | Questions refused before any model call: `sensitive_info_requested`, `masked_column_requested`, `write_operation_requested`, `prompt_injection_detected`, and since 1.33.0 `input_too_long`, `question_too_short`, `raw_sql`, `provider_unavailable`. Before 1.33.0 the route's own injection filter and length check were not counted here (nor audited) |
-| `rosie_refused_total` | `route`, `reason` | Requests turned away before they were read (since 1.33.0). `route` is `ask`, `export`, `explain`, `feedback`, `certify` or `mcp`; `reason` is `rate_limited`, `busy`, `security_hold`, `column_grants_hold`, `audit_unavailable` or `unauthenticated`. Every refusal is counted; its audit row (`status=refused`) is written at most once a minute per route, reason and address. These are not questions and are not in `rosie_questions_total` |
+| `rosie_refused_total` | `route`, `reason` | Requests turned away before they were read (since 1.33.0). `route` is `ask`, `export`, `explain`, `feedback`, `certify` or `mcp`; `reason` is `rate_limited`, `busy`, `security_hold`, `column_grants_hold`, `audit_unavailable`, `unauthenticated` or, since 1.35.0, `csrf_refused` (a request with the chat page's session from another origin). Every refusal is counted; its audit row (`status=refused`) is written at most once a minute per route, reason and address. These are not questions and are not in `rosie_questions_total` |
 | `rosie_answers_total` | `source` | Answers that returned a result, by where the statement came from: `model_sql`, `approved_query`, `compiled_metric`, `certified_sql` (a statement sent to `/certify` or `certify_sql`) |
 | `rosie_certificates_total` | `verdict` | Certificates issued, by verdict ([CERTIFICATE.md](CERTIFICATE.md)) |
 | `rosie_assertions_total` | `check`, `result` | Each check that ran, with `pass`, `warn` or `fail` |
 | `rosie_checks_skipped_total` | `check`, `reason` | Each check that was due and did not run, and why |
 | `rosie_repairs_total` | `outcome` | Certificate-guided second attempts |
 | `rosie_feedback_total` | `rating` | Ratings from users, `up` or `down` |
+| `rosie_signin_total` | `outcome` | Chat page sign-in events (1.35.0): `signed_in`, `not_allowed`, `failed`, `signed_out`. Fixed values only: never a person, a provider message or a domain |
 | `rosie_tokens_total` | `direction` | Model tokens, `input` and `output` |
 | `rosie_question_duration_seconds` | histogram | Time to answer, end to end. Buckets at 1, 2, 5, 10, 20, 30, 60 and 120 seconds. Exports and explanations are observed here too |
 | `rosie_audit_sink_healthy` | gauge | 1 while the audit trail is being recorded, 0 otherwise |
@@ -105,6 +106,8 @@ groups:
         expr: increase(rosie_certificates_total{verdict="CONTRADICTED"}[1h]) > 0
       - alert: RosieTurningPeopleAway
         expr: sum(increase(rosie_refused_total{reason=~"rate_limited|busy"}[1h])) > 20
+      - alert: RosieSignInFailing
+        expr: increase(rosie_signin_total{outcome="failed"}[15m]) > 10
       - alert: RosieInjectionAttempts
         expr: increase(rosie_blocked_total{reason="prompt_injection_detected"}[1h]) > 5
 ```
@@ -198,3 +201,29 @@ letter case, with no masked column involved.
   audit policy blocking), so a load balancer and the Docker `HEALTHCHECK` see it. It is a
   readiness check: do not restart a process on it, the cause is configuration, not the
   process ([API.md](API.md#get-health-public)). Use the metrics endpoint for everything else.
+
+## Chat page sign-in events (1.35.0)
+
+With the chat page on ([CHAT_PAGE.md](CHAT_PAGE.md)), each of these is one log line with an
+`event` field, counted in `rosie_signin_total`, and the first four are also an audit file
+record of kind `rosie_signin` (`event`, `user_id`, `email`, `provider`, `reason`,
+`ip_address`, `user_agent`, `correlation_id`, `at`). Erasure (`npm run subject -- --erase`)
+covers these records like every other one with the person's `user_id`.
+
+| Event | Level | Meaning |
+|---|---|---|
+| `signin_succeeded` | info | A person signed in. Fields `provider`, `userId`, `correlationId` |
+| `signin_not_allowed` | warn, `security: true` | The provider confirmed the person, who is not on the allow-list. `reason`: `domain_not_allowed`, `workspace_domain_not_allowed` (Google account outside the Workspace domain), `no_verified_email`, `group_not_allowed`, `groups_overage` (Entra sent no groups because the person is in more than 200: use app roles or emit only the groups assigned to the application). The person saw `E_SIGNIN_NOT_ALLOWED` |
+| `signin_failed` | warn, `security: true` | The sign-in did not complete, and the person saw `E_SIGNIN_FAILED`. `reason`: `state_mismatch`, `no_sign_in_in_progress` (a callback in a browser that did not start the sign-in, or after 10 minutes: `expired`), `provider_error:<code>`, `token_failed: <code>`, `id_token_invalid: <jose code> (<claim>)` (signature, issuer, audience, expiry), `nonce_mismatch`, `azp_mismatch`, `tenant_mismatch`, `discovery_failed`, `discovery_issuer_mismatch`, `no_user_id`, `session_too_large` (the claims, usually groups, do not fit a 4 KB cookie), `audit_unavailable` (fail-closed audit policy) |
+| `signout` | info | A person signed out |
+| `chat_csrf_refused` | warn, `security: true` | A request carrying the chat page's session did not come from the page (another `Origin`, a cross-site `Sec-Fetch-Site`, no or a wrong `X-Rosie-CSRF` token, or a sign-out without its token). Also counted as `rosie_refused_total{reason="csrf_refused"}` |
+| `oidc_discovery_ok`, `oidc_discovery_failed` | info, error | At startup and on a failed sign-in: whether a provider's discovery document could be fetched. Sign-in through that provider fails until it can |
+| `chat_page_on` | info | At startup: the page's origin, its providers and the redirect URL to register |
+| `chat_page_setting` | warn | At startup: no allow-list (anyone the provider authenticates may sign in), plain http on localhost, or chat settings present while the page is off |
+| `signin_silent_unavailable` | info | A silent sign-in (`prompt=none`) the provider could not complete without the person (`reason`: `login_required` and the like). Not a failure: the person then sees the sign-in step. Not counted, not in the audit file |
+| `session_rejected` | debug | A session cookie that was invalid, expired, idle or signed out |
+
+A sign-in of someone not allowed, repeated, is worth a look (`signin_not_allowed` by
+address); a burst of `signin_failed` with `id_token_invalid` or `discovery_failed` usually
+means the provider changed (a rotated client secret, an expired certificate) rather than an
+attack.

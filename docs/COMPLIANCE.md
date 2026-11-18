@@ -191,12 +191,13 @@ npm run audit-verify -- ./evidence-2026-10 --expect <the digest it printed>
 ```
 
 The bundle holds, for the period: the rows of the three tables as CSV; the audit file records
-(statements tried, administration changes, masking state changes, maintenance records), with
+(statements tried, administration changes, masking state changes, maintenance records and,
+since 1.35.0, chat page sign-ins in `signins.ndjson`), with
 the masking state in force when the period began; the settings in effect, secrets redacted;
 the context digest with a SHA-256 of each context file and the lists of masked and personal
 columns; a summary (outcomes, refusals by reason, statements refused inside the model loop,
 certificate verdicts, exports and rows exported per user, answers that returned personal data
-per user); a README; and `MANIFEST.sha256`, a SHA-256 of every file (`shasum -a 256 -c` reads
+per user, sign-in events by kind); a README; and `MANIFEST.sha256`, a SHA-256 of every file (`shasum -a 256 -c` reads
 it). The command prints the digest of the manifest itself: keep it outside the bundle (the
 ticket, the email that sends it), because a manifest can be rewritten together with the files
 it lists. `--user <id>` limits the bundle to one person. The export is itself recorded
