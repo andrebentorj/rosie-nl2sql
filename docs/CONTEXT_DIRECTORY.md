@@ -92,6 +92,7 @@ startup when the block is missing, and exposes it via `GET /project-info`:
 `aiDisclaimer` (optional) overrides the wording of the widget's AI-output disclaimer;
 when absent, the engine's default notice is shown. It is always on.
 
+
 ### Widget theme (optional)
 
 Each project can re-color the widget UI (the mascot keeps its own colors: it is the
@@ -146,6 +147,31 @@ message and the results window. `tagline` is the small text next to the name (an
 removes it). `hideMascot` swaps the mascot for a neutral chat icon in the theme colour. Names
 are limited to 40 characters: letters, digits, spaces and `. & ' -`. Anything else is ignored
 and the default is shown. Set your own `welcomeMessage` as well if it mentions the name.
+
+## Whom to tell during a hold: `supportContact` in `project.json` (optional, since 1.33.0)
+
+When Rosie is paused by a security hold, the widget tells the person asking whom to contact
+and which code to quote. Name that person or team:
+
+```json
+"supportContact": { "name": "Maria in IT", "contact": "it@example.com" }
+```
+
+or as one string: `"supportContact": "Maria in IT, it@example.com"`. The widget then reads
+"Please tell Maria in IT (it@example.com), and quote the code." Only plain text is used
+(markup characters are removed, 160 characters at most). It reaches `/project-info` only
+during a hold, which anyone can call, so write a team address rather than a private one.
+Without it the sentence is "Please tell the person who looks after Rosie at your company, and
+quote the code."
+
+## Checking the files
+
+`npm run check-context` checks the keys and values of these files: an unknown key is named
+with the closest known one ("did you mean"), and a `calendar` value the prompt cannot carry
+(a month outside 1 to 12, a day that is not a weekday, a time zone that is not an IANA name)
+fails the check and stops the server. `npm run check-context -- --schemas <dir>` writes a
+JSON Schema of each file for an editor: point `"$schema"` at it. Keys that start with `_` or
+`$` are comments.
 
 ## Optional files and fields
 

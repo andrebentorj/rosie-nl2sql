@@ -24,12 +24,19 @@ Create the engine tables from `db/schema.postgres.sql` (or let `npm run init` do
 `DB_DIALECT=postgres npm run generate-catalog`. The steps are those of `docs/INSTALL.md`;
 this page gives the PostgreSQL statements.
 
-## The engine database and the main role
+## The engine database and the engine account
+
+Since 1.33.0 `npm run init -- --url postgres://... --create-ro-user` does all of this: it
+creates the engine database `rosie` and its tables, and an engine account `rosie_engine`
+(`--engine-user` for another name) with `SELECT` and `INSERT` on Rosie's four tables only,
+and writes that account to `.env` as `DB_USER`. The administrator account of the URL is
+never written there. `npm run doctor` warns when `DB_USER` is an administrator. By hand, as
+an administrator:
 
 ```sql
 CREATE DATABASE rosie;
-CREATE ROLE rosie_app LOGIN PASSWORD '...';
-GRANT CONNECT ON DATABASE rosie TO rosie_app;
+CREATE ROLE rosie_engine LOGIN PASSWORD '...';
+GRANT CONNECT ON DATABASE rosie TO rosie_engine;
 ```
 
 ```bash
@@ -39,26 +46,28 @@ psql -d rosie -f db/schema.postgres.sql
 Then, connected to `rosie`:
 
 ```sql
-GRANT USAGE ON SCHEMA public TO rosie_app;
+GRANT USAGE ON SCHEMA public TO rosie_engine;
 -- Always: the engine inserts its records and reads them back.
-GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA public TO rosie_app;
-GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO rosie_app;     -- the id columns are BIGSERIAL
--- Only with ROSIE_RATE_LIMIT_STORE=database.
-GRANT UPDATE, DELETE ON rosie_rate_limit TO rosie_app;
+GRANT SELECT, INSERT ON rosie_audit_log, rosie_answer_certificate, rosie_feedback, rosie_rate_limit TO rosie_engine;
+GRANT USAGE ON SEQUENCE rosie_audit_log_id_seq, rosie_answer_certificate_id_seq, rosie_feedback_id_seq TO rosie_engine;  -- BIGSERIAL ids
+-- Only with ROSIE_RATE_LIMIT_STORE=database (the wizard grants it).
+GRANT UPDATE, DELETE ON rosie_rate_limit TO rosie_engine;
 -- Only for the account that runs `npm run retention -- --confirm` (it can be another role).
 GRANT SELECT, DELETE ON rosie_audit_log, rosie_answer_certificate, rosie_feedback TO rosie_retention;
 ```
 
 A new PostgreSQL database gives `CONNECT` to `PUBLIC`. Since 1.32.1 `npm run init` revokes
 it when it creates the engine database and grants `CONNECT` only to the account that ran it;
-with a different main role (this page's `rosie_app`, or a `DB_USER` changed later) run the
-`GRANT CONNECT ON DATABASE rosie TO rosie_app;` above yourself. When the database already
+and to the engine account it creates; with an engine account made by hand (this page's
+`rosie_engine`, or a `DB_USER` changed later) run the
+`GRANT CONNECT ON DATABASE rosie TO rosie_engine;` above yourself. When the database already
 existed the wizard changes nothing and prints how to limit it:
-`REVOKE CONNECT ON DATABASE rosie FROM PUBLIC; GRANT CONNECT ON DATABASE rosie TO rosie_app;`.
+`REVOKE CONNECT ON DATABASE rosie FROM PUBLIC; GRANT CONNECT ON DATABASE rosie TO rosie_engine;`.
 
-`npm run doctor` checks that the tables are there, not these grants. `npm run
-generate-catalog` and `npm run init` read the business schema with `DB_USER`, so that role
-also needs to read it, or run those commands with another account.
+`npm run doctor` checks that the tables are there and that `DB_USER` is not an
+administrator (a superuser, or a role that can create roles or databases), not each grant.
+`npm run generate-catalog` reads the business schema with `DB_USER`: run it with an account
+that can read it (the wizard reads it with the URL account).
 
 ## The read-only role
 

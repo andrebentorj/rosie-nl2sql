@@ -60,7 +60,7 @@ jobs:
       - uses: actions/checkout@v4
         with: { path: base, ref: '${{ github.base_ref }}' }
       - uses: actions/checkout@v4
-        with: { repository: your-org/rosie, path: rosie, token: '${{ secrets.ROSIE_REPO_TOKEN }}' }
+        with: { repository: your-org/rosie, path: rosie, token: '${{ secrets.GH_TOKEN_FOR_ROSIE }}' }
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm ci --omit=dev
@@ -422,12 +422,45 @@ a key rotation is a new value and a restart.
 
 ## Settings reference
 
-**How values are read (since 1.32.0).** A yes-or-no setting is read without letter case or
+**What to set.** `.env.example` opens with the short list a small installation sets (the model
+key, the database and its two accounts, the context directory, the API token, the handle
+secret, the browser origins, and `DB_SSL`, `TRUST_PROXY` and `NODE_ENV` where they apply).
+Every other setting has a working default and is listed below it, commented out.
+
+**What is in effect.** `npm run doctor -- --settings` prints each setting with its effective
+value and where it comes from (`.env`, the process environment, or the default), secrets
+shown as `set, N characters`. It is safe to paste into a support conversation; `--all` adds
+the settings left at their default.
+
+**Numbers and lists (since 1.33.0).** A number is digits only, in the unit its name says
+(`_MS` is milliseconds), within a range: `AI_QUERY_TIMEOUT_MS` from 1000 to 3600000, ports
+from 0 to 65535, `AI_CONCURRENCY_LIMIT` from 1, and so on (`config/settings.js` holds every
+range). `10s`, `1e3`, `-1` or `abc` stop the server, both MCP servers, `npm run grants` and
+`npm run doctor` with a message naming the setting and the range, for example
+`AI_QUERY_TIMEOUT_MS must be a whole number from 1000 to 3600000 milliseconds (digits only, no
+unit), not "10s"`. Until 1.33.0 that value was read as 10 milliseconds, `1e3` as 1 and `abc`
+as the default, without a word. The same holds for the settings with a closed list of values:
+`ROSIE_RATE_LIMIT_STORE` (`memory`, `database`), `LOG_LEVEL` (`debug`, `info`, `warn`,
+`error`, `silent`), `LOG_FORMAT` (`pretty`, `json`), `AI_API` (`chat`, `responses`),
+`DB_DIALECT` (`mysql`, `postgres`, `mssql` and their aliases) and `TRUST_PROXY` (a hop count,
+`true`, `false`, or addresses, CIDR ranges and `loopback`, `linklocal`, `uniquelocal`). The
+server logs `config_invalid` with the message and exits 1 (`masking_mode_invalid` when
+`ROSIE_MASKING_MODE` itself is the problem, as before). `NODE_ENV` and `AI_REASONING_EFFORT`
+only warn on a value they do not know: `NODE_ENV=staging` is read as development.
+
+**Names Rosie does not read.** At startup and in `npm run doctor`, a name starting with
+`ROSIE_` that Rosie does not read, or an `AI_` or `DB_` name one typo away from a setting, is
+named with the closest setting: `AI_MODLE is not a setting Rosie reads: did you mean
+AI_MODEL?` (log event `setting_unknown`). Other `AI_` and `DB_` names belong to other software
+and are left alone.
+
+**Yes-or-no values (since 1.32.0).** A yes-or-no setting is read without letter case or
 surrounding spaces: `true`, `1`, `yes` and `on` mean yes; `false`, `0`, `no` and `off` mean no.
 For the settings that decide a security behaviour, any other value is a configuration error
-and the HTTP server and both MCP servers refuse to start (the server logs
-`masking_mode_invalid` with the message; `npm run grants` exits 2; `npm run doctor` fails its
-"Masking mode" line): `ROSIE_REQUIRE_COLUMN_GRANTS`, `ROSIE_CERTIFY_SQL`, `ROSIE_ADMIN_WRITE`,
+and the HTTP server and both MCP servers refuse to start (the server logs `config_invalid`,
+or `masking_mode_invalid` for the two masking settings, with the message; `npm run grants`
+exits 2; `npm run doctor` fails its "Settings" line, or its "Masking mode" line for
+`ROSIE_MASKING_MODE` and `ROSIE_REQUIRE_COLUMN_GRANTS`): `ROSIE_REQUIRE_COLUMN_GRANTS`, `ROSIE_CERTIFY_SQL`, `ROSIE_ADMIN_WRITE`,
 `ROSIE_AUDIT_FSYNC`, `ROSIE_MCP_HTTP_ENABLED`, `AI_UNION_ALL`, and every yes-or-no `AI_*`
 setting: `AI_ANSWER_CHECKS`, `AI_CROSS_CHECK`, `AI_CERTIFICATE_REPAIR`, `AI_CERTIFICATE_REPAIR_UNDECLARED`, `AI_QUESTION_REVIEW`, `AI_QUESTION_REVIEW_REPAIR`, `AI_ASSISTANT_ENABLED`, `AI_CATALOG_COLUMNS`, `AI_CATALOG_DESCRIPTIONS`, `AI_CATALOG_PROFILE`. The same holds for
 `ROSIE_AUDIT_POLICY` (`fail-open` or `fail-closed`, any case) and `DB_SSL` (`true`, `require`,
@@ -435,7 +468,18 @@ setting: `AI_ANSWER_CHECKS`, `AI_CROSS_CHECK`, `AI_CERTIFICATE_REPAIR`, `AI_CERT
 written, for example `ROSIE_REQUIRE_COLUMN_GRANTS must be true or false (also 1/0, yes/no,
 on/off, any case), not "TRUE!"`. Every yes-or-no setting read through the configuration
 follows this rule; a test fails the build if a new one does not. Before 1.32.0 most of these read only `true` (and some `1`), so `TRUE` or `yes` meant
-off. `TRUST_PROXY` is not a yes-or-no setting and is unchanged.
+off. `TRUST_PROXY` is not a yes-or-no setting; its values are above.
+
+**The context files.** `npm run check-context` and the server check the shape of
+`schema-catalog.json`, `project.json`, `verified-queries.json` and `clarification-rules.json`
+(`config/context-schema.js`; `masked-columns.json` has its own check). An unknown key is a
+warning with the closest known one (`unknown key "promptHiden", did you mean
+"promptHidden"?`), so is a value of the wrong type; keys that start with `_` or `$` are
+comments. The `calendar` block of `project.json` is written into the prompt as it is, so a
+`fiscalYearStartMonth` outside 1 to 12, a `weekStartsOn` that is not a day of the week or a
+`timezone` that is not an IANA zone name fails `check-context` and stops the server at
+startup (`startup_failed`, one line). `npm run check-context -- --schemas <dir>` writes a JSON
+Schema of each file, for completion and checks in an editor: point `"$schema"` at it.
 
 A malformed mask configuration (`E_MASK_CONFIG_INVALID`) also stops the server; a reload with
 one fails and keeps the context in service ([INSTALL.md](INSTALL.md), Step 4d).
@@ -445,15 +489,16 @@ other page explains. All are read at startup; changing one needs a restart.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `TRUST_PROXY` | unset | Number of reverse-proxy hops in front of Rosie (usually `1`), or a list of proxy addresses. Unset, the client address Rosie sees is the proxy's and every user shares one rate-limit bucket. `true` trusts any `X-Forwarded-For` and is logged as a warning |
+| `TRUST_PROXY` | unset | Number of reverse-proxy hops in front of Rosie (usually `1`), or a list of proxy addresses. Unset, the client address Rosie sees is the proxy's and every user shares one rate-limit bucket. `true` trusts any `X-Forwarded-For` and is logged as a warning; `false` is the same as unset |
+| `AI_ASSISTANT_ENABLED` | `true` | The kill switch: `false` turns off the routes that answer or record (they answer 404) and makes `/health` answer 503 `unavailable`. Unset is on since 1.33.0 (it was off) |
 | `NODE_ENV` | unset | `production` makes authentication fail closed: with no `ROSIE_API_TOKEN` and no JWT configured, every request is refused with 503. The Docker image sets it |
-| `ROSIE_CORS_ORIGIN` | `http://localhost:4200` | Origins allowed to call the API from a browser, comma-separated. `*` is refused |
-| `LOG_LEVEL` | `info` | `error`, `warn`, `info` or `debug`. Full SQL text is logged only at `debug`; filter values can hold personal data, so keep production at `info`. So is the text of a database error, which can quote a stored value (since 1.30.0; before, at `error`) |
+| `ROSIE_CORS_ORIGIN` | `http://localhost:4200` | Origins allowed to call the API from a browser, comma-separated, each `scheme://host[:port]` with no path or trailing slash. `*` is refused. A request from another origin gets 403 with `{ "code": "E_CORS_ORIGIN", "origin", "setting": "ROSIE_CORS_ORIGIN" }` and one `cors_origin_refused` log line per origin (500 until 1.33.0). `npm run doctor -- --origin https://your.site` says whether a page there would be allowed |
+| `LOG_LEVEL` | `info` | `error`, `warn`, `info` or `debug` (`silent` is accepted for test harnesses). Full SQL text is logged only at `debug`; filter values can hold personal data, so keep production at `info`. So is the text of a database error, which can quote a stored value (since 1.30.0; before, at `error`) |
 | `LOG_FORMAT` | `pretty` | `json` writes one JSON object per line, for a log aggregator |
 | `ROSIE_EVAL_DIR` | `<context>/eval/runs` | Where `npm run evaluate` writes its runs and where the server reads the last one. Set it when the context is mounted read-only |
-| `ROSIE_PERMCHECK_INTERVAL_MS` | `900000` | How often the privileges of the read-only user, and its masked-column grants, are checked again. A value under one minute is replaced by the default |
-| `ROSIE_COLUMN_GRANTS_MAX_AGE_MS` | twice the interval plus 300000 (35 minutes) | How long a passing masked-column result lets a context serve with the gate on, counted as the larger of the monotonic and the wall-clock age. Under 60000 or not a number: the default. Above 24 hours (86400000): 24 hours, without an error, so a check interval above 24 hours holds requests between checks. Under the interval plus the check deadline it holds requests between ordinary runs ([INSTALL.md](INSTALL.md#requiring-the-database-grant-rosie_require_column_grants)) |
-| `ROSIE_COLUMN_GRANTS_CHECK_TIMEOUT_MS` | `120000` | The deadline of one masked-column check (and of one pool replacement). A check that does not finish makes the context "not checked". Under 1000 or not a number: the default |
+| `ROSIE_PERMCHECK_INTERVAL_MS` | `900000` | How often the privileges of the read-only user, and its masked-column grants, are checked again. From 60000 to 86400000; any other value stops the server (until 1.33.0 it was replaced by the default) |
+| `ROSIE_COLUMN_GRANTS_MAX_AGE_MS` | twice the interval plus 300000 (35 minutes) | How long a passing masked-column result lets a context serve with the gate on, counted as the larger of the monotonic and the wall-clock age. From 60000 to 86400000 (24 hours); any other value stops the server. Derived from an interval above 12 hours, it is capped at 24 hours, so a check interval above 24 hours holds requests between checks. Under the interval plus the check deadline it holds requests between ordinary runs ([INSTALL.md](INSTALL.md#requiring-the-database-grant-rosie_require_column_grants)) |
+| `ROSIE_COLUMN_GRANTS_CHECK_TIMEOUT_MS` | `120000` | The deadline of one masked-column check (and of one pool replacement). A check that does not finish makes the context "not checked". From 1000 to 3600000 |
 | `ROSIE_MASKING_MODE` | `express` | `strict` when the database must deny the masked columns too: table and column grants, verified at startup, and the gate below on by default ([INSTALL.md](INSTALL.md#choosing-a-masking-mode)). Read without letter case. Any other value stops the HTTP server (`masking_mode_invalid`, exit 1) and the MCP servers (exit 1); `npm run grants` exits 2 and `npm run doctor` fails its "Masking mode" line |
 | `ROSIE_REQUIRE_COLUMN_GRANTS` | `false` in express, `true` in strict | An explicit value wins over the mode's default. `true` refuses every request that would run SQL for a context that is not "masked by the database" or "no masked columns" ([INSTALL.md](INSTALL.md#requiring-the-database-grant-rosie_require_column_grants)) |
 | `ROSIE_MCP_HTTP_ENABLED` | `false` | Must be `true` for `npm run mcp:http` to start ([MCP_SERVER.md](MCP_SERVER.md)) |
@@ -466,7 +511,7 @@ other page explains. All are read at startup; changing one needs a restart.
 | `AI_MAX_QUERIES_PER_REQUEST` | `5` | Queries that reach the database inside one question. Further attempts are refused and the model must answer with what it has |
 | `AI_MAX_TOTAL_TOKENS` | `0` | Model tokens one question may use before an answer is forced. `0` is no limit |
 | `AI_LLM_RESULT_MAX_ROWS` | `30` | Rows of each result shown to the model. The user always gets the full result. `0` sends the whole result |
-| `AI_QUERY_TIMEOUT_MS` | `10000` | Statement timeout on the read-only pool |
+| `AI_QUERY_TIMEOUT_MS` | `10000` | Statement timeout on the read-only pool, from 1000 to 3600000 milliseconds |
 | `AI_CIRCUIT_BREAKER_THRESHOLD`, `AI_CIRCUIT_BREAKER_COOLDOWN_MS` | `5`, `60000` | After that many provider failures in a row, questions are answered with "temporarily unable" for the cooldown, without calling the provider |
 | `AI_SCHEMA_MAX_TABLES` | `40` | Catalogs with more tables than this get a prompt with only the tables relevant to the question. `0` turns that off. The allowlist is never affected |
 | `AI_SCHEMA_TOPK` | `15` | The most tables that selection may pick for one question |

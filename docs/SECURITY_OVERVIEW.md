@@ -254,9 +254,28 @@ whose `error` quotes a value. In `rosie_audit_log.error_message` where
 **What these searches cannot tell you.** The audit row holds the final statement of each
 answer. Statements the model ran before it, whose rows also went to the provider, are not
 recorded (from 1.30.0 the audit file lists, under `sql_trace`, the statements the model ran
-with `execute_query`, up to 20 per question). A search that finds
+with `execute_query`, up to 20 per question; since 1.33.0 each entry says whether it `ran`,
+with its row count, was `refused` by the validator or a row policy, with the reason, or
+`failed` in the database, and a refusal also sets the row's `rejection_reason` to
+`statement_refused:<reasons>`). A search that finds
 nothing does not show that nothing happened. Upgrading does not undo anything already sent
 or stored.
+
+**Refusals in the trail (since 1.33.0).** Every refusal leaves a record: the pre-model
+refusals of the engine and of the route (injection filter, over-long or too-short question,
+raw SQL, write or credential request, masked column, provider down) as `status=blocked` with
+the reason, and requests turned away before they were read (bad token, rate limit, no free
+slot, security or column-grant hold) as `status=refused`, with the person, the address and
+the correlation id: the first of a minute per route, reason, address and person as its own
+row, and when the minute ends one row with how many more there were
+(`rosie_refused_total` counts every one). An unauthenticated caller can now cause these rows
+(one a minute per address). Before 1.33.0 the
+route's injection filter and length check, the raw-SQL and too-short refusals and every
+`401`, `429` and `503` left no audit row. Exports, explanations and ratings are recorded
+under the person who asked, carried in the answer's signed handle; before 1.33.0, with the
+static token, they were recorded as `authenticated`. A `POST /admin/reload` is recorded
+with who did it, like the console's changes. On PostgreSQL the engine tables' times were
+stored in the host's local time on a host not on UTC; since 1.33.0 they are written in UTC.
 
 ## Corrections
 
@@ -266,8 +285,8 @@ independent reviews of the source, none from a report of use.
 The searches below read the statement of each answer. Statements the model ran to explore,
 whose rows also went to the provider, are not in `rosie_audit_log`; since 1.30.0 the audit
 file lists, under `sql_trace`, the statements the model ran for a question with
-`execute_query`, refused ones included, up to 20. A search that finds nothing does
-not show that nothing happened.
+`execute_query`, refused ones included (marked `refused` since 1.33.0), up to 20. A search
+that finds nothing does not show that nothing happened.
 
 The 1.29.2 release said its scope fixes were checked on SQL Server by the test battery. That
 was not true: because of a defect in the test, the battery ran its 1.29.2 scope cases on the

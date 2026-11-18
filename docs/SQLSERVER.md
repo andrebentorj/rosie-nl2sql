@@ -36,14 +36,21 @@ page gives the SQL Server statements. `DB_ENGINE_SCHEMA` is not read on SQL Serv
 engine addresses its tables without a schema name, so they are found in the default schema
 of the main account.
 
-## The engine database and the main login
+## The engine database and the engine login
+
+Since 1.33.0 `npm run init -- --url mssql://... --create-ro-user` does all of this: it
+creates the engine database `rosie` and its tables, and an engine login and user
+`rosie_engine` (`--engine-user` for another name) with `SELECT` and `INSERT` on Rosie's four
+tables only, and writes that login to `.env` as `DB_USER`. The `sa` or administrator login of
+the URL is never written there. `npm run doctor` warns when `DB_USER` is an administrator. By
+hand, as an administrator:
 
 ```sql
-CREATE LOGIN rosie_app WITH PASSWORD = '...';
+CREATE LOGIN rosie_engine WITH PASSWORD = '...';
 CREATE DATABASE rosie;
 GO
 USE rosie;
-CREATE USER rosie_app FOR LOGIN rosie_app;
+CREATE USER rosie_engine FOR LOGIN rosie_engine;
 ```
 
 ```bash
@@ -53,18 +60,23 @@ sqlcmd -S <host> -U <admin> -d rosie -i db/schema.mssql.sql
 ```sql
 USE rosie;
 -- Always: the engine inserts its records and reads them back.
-GRANT SELECT, INSERT ON SCHEMA::dbo TO rosie_app;
--- Only with ROSIE_RATE_LIMIT_STORE=database.
-GRANT UPDATE, DELETE ON OBJECT::dbo.rosie_rate_limit TO rosie_app;
+GRANT SELECT, INSERT ON OBJECT::dbo.rosie_audit_log TO rosie_engine;
+GRANT SELECT, INSERT ON OBJECT::dbo.rosie_answer_certificate TO rosie_engine;
+GRANT SELECT, INSERT ON OBJECT::dbo.rosie_feedback TO rosie_engine;
+GRANT SELECT, INSERT ON OBJECT::dbo.rosie_rate_limit TO rosie_engine;
+-- Only with ROSIE_RATE_LIMIT_STORE=database (the wizard grants it).
+GRANT UPDATE, DELETE ON OBJECT::dbo.rosie_rate_limit TO rosie_engine;
 -- Only for the account that runs `npm run retention -- --confirm` (it can be another login).
 GRANT SELECT, DELETE ON OBJECT::dbo.rosie_audit_log TO rosie_retention;
 GRANT SELECT, DELETE ON OBJECT::dbo.rosie_answer_certificate TO rosie_retention;
 GRANT SELECT, DELETE ON OBJECT::dbo.rosie_feedback TO rosie_retention;
 ```
 
-`npm run doctor` checks that the tables are there, not these grants. `npm run
-generate-catalog` and `npm run init` read the business database with `DB_USER`, so that
-login also needs to read its metadata there, or run those commands with another account.
+`npm run doctor` checks that the tables are there and that `DB_USER` is not an
+administrator (sysadmin or `ALTER ANY LOGIN`; `db_owner` of the engine database is reported
+as more than Rosie needs), not each grant. `npm run generate-catalog` reads the business
+database with `DB_USER`: run it with a login that can read its metadata (the wizard reads it
+with the URL login).
 
 ## The read-only login
 

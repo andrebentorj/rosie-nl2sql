@@ -15,7 +15,9 @@ front doors run the same engine.
 
 Errors common to every route: `413` for a body over 50 KB and `400` for a body that is not
 valid JSON, both as `{ "error": "..." }`. A request whose `Origin` header is not in
-`ROSIE_CORS_ORIGIN` is refused with `500`.
+`ROSIE_CORS_ORIGIN` is refused with `403` and
+`{ "error": "...", "code": "E_CORS_ORIGIN", "origin": "<the origin>", "setting": "ROSIE_CORS_ORIGIN" }`
+(`500` until 1.33.0).
 
 Middleware order on `/ask`: feature flag (`AI_ASSISTANT_ENABLED`) → read-only privilege gate
 (503 while the probe fails) → masked-column grant gate (503 while
@@ -39,17 +41,42 @@ Ask a question in natural language.
     { "role": "assistant", "content": "previous answer" }
   ],
   "previousAnswerHandle": "optional: the answerHandle of the answer this question refines",
+  "widgetVersion": "optional: the version of the calling widget",
   "stream": false
 }
 ```
 
 - `question` is required, 3 to `AI_MAX_INPUT_LENGTH` (default 2000) characters. A question
-  that starts with a SQL keyword, write intent, requests for credentials or for a masked
-  column, and prompt-injection patterns are refused before any model call.
+  typed as a SQL statement, write intent, requests for credentials or for a masked column,
+  and prompt-injection patterns are refused before any model call. Since 1.33.0 a question
+  counts as SQL only when it reads as a statement: a `SELECT ... FROM` with something only
+  SQL writes, `SELECT` and `FROM` in capitals, a `select <names> from <a catalog table>` in
+  any case, a `select` with `@@`, a function call, a number, a semicolon, a comment,
+  `UNION SELECT` or `INFORMATION_SCHEMA`, or the head of a write or DDL statement. "Select
+  the top 5 customers", "Select customers from Brazil", "Create a list of ..." and "Update
+  me on sales" are questions. A question that puts a catalog table name right after "from"
+  ("Select tracks from Album Thriller" when `Album` is a table), or carries a function call
+  or a semicolon after "select" ("Select sum(total) by country"), is still taken for SQL
+  and refused, as it was in 1.32.1; rephrase it ("Show the tracks of the album Thriller").
+  This is a courtesy refusal before the model, not a security control: the validator
+  checks whatever statement runs. Write and credential requests are also recognized in
+  Portuguese; a change verb about the answer itself ("mude o gráfico para barras", "crie um
+  novo gráfico", "remova os dados de 2020 da comparação") is not a write request.
 - `user` is **audit and personalization only**, never authorization. It is ignored when the
-  request carries a verified JWT.
+  request carries a verified JWT. With the static token it names the person every record of
+  this answer is kept under: the answer's handle carries it (signed), so the export,
+  explanation and rating of the answer are recorded under the same person (since 1.33.0;
+  before, those three were recorded as `authenticated`).
 - `history` is optional: at most 10 entries are kept, each truncated and passed through the
   injection filter; the model sees the last 6.
+- `widgetVersion` is optional (since 1.33.0): the widget sends its version here as well as in
+  the `X-Rosie-Widget-Version` header, which it sends only to its own origin. Either one (the
+  header wins), when it reads as a version (letters, digits, `.`, `_`, `-`, 32 characters at
+  most), is added to the audit row's user agent as ` rosie-widget/<version>`, bound to the
+  request's log lines as `widgetVersion`, and logged once per version per process
+  (`widget_version_seen`, with `via` `header` or `body`). Only a release-shaped version
+  (`2026.11.17`, `2026.11.17.2`) from a request that passes authentication is logged, and at
+  most 20 per process; then one `widget_version_seen_full` warning. Anything else is ignored.
 - `previousAnswerHandle` is optional. When it verifies (same caller, same project, not
   expired), the engine starts from that answer's SQL and question, for follow-ups such as
   "now only for Q3", when that SQL still passes the validator against the current catalog
@@ -64,6 +91,8 @@ Response `200`:
   "conversationId": "…",
   "messageId": "uuid",
   "answer": "There are 412 paid orders.",
+  "blocked": false,
+  "reason": null,
   "clarification": null,
   "sql": "SELECT COUNT(*) AS n FROM `orders` WHERE `status` = 'paid' LIMIT 501",
   "certificate": {
@@ -138,16 +167,60 @@ Response `200`:
   minutes and is bound to the caller identity and the project. The caller identity is the
   verified user under JWT. With the shared `ROSIE_API_TOKEN` every caller is the same
   identity, so the handle is then bound to the installation, not to a person.
-- A question refused by the engine's own guards still returns `200`, with the refusal text
-  in `answer` and no `sql`: write intent, a request for credentials or for a masked column,
-  a question that starts with SQL, and one shorter than 3 characters. A question refused at
-  the door returns `400`: missing or empty, longer than `AI_MAX_INPUT_LENGTH`, or caught by
-  the injection filter (`{ "error": "Your question was blocked by the safety filter." }`).
+- `blocked` and `reason` (since 1.33.0) tell a refusal from an answer, with the same values
+  as the MCP tool. A question refused by the engine's own guards still returns `200`, with
+  `blocked: true`, the sentence to show in `answer`, no `sql`, no `answerHandle` and no
+  certificate. `reason` is `write_intent`, `sensitive_request` (credentials or a masked
+  column), `raw_sql`, `prompt_injection`, `question_too_short`, `question_too_long` or
+  `provider_unavailable` (the model provider is failing; try again in a minute). Do not show
+  thumbs or a "nothing was checked" line under a refusal. For an answer, `blocked` is `false`
+  and `reason` is `null`.
+- A question refused at the door returns `400`: missing or empty, longer than
+  `AI_MAX_INPUT_LENGTH` (`code: "E_INPUT_TOO_LONG"`, `blocked: true`,
+  `reason: "question_too_long"`), or caught by the injection filter (`{ "error": "Your
+  question was blocked by the safety filter.", "code": "E_SAFETY_FILTER", "blocked": true,
+  "reason": "prompt_injection" }`). Since 1.33.0 both leave an audit row (`status=blocked`,
+  `rejection_reason` `input_too_long` or `prompt_injection_detected`).
 
 Errors: `400` invalid body or question, `401` bad token, `404` assistant disabled
-(`AI_ASSISTANT_ENABLED` is not `true`, or no model key is set), `429` rate limited
-(`Retry-After`), `503` security hold / busy / audit policy, or no credential configured
-with `NODE_ENV=production`, `500` engine error (audited as `status=error`).
+(`AI_ASSISTANT_ENABLED=false`, or no model key is set), `429` rate limited
+(`Retry-After`, `code: "E_RATE_LIMITED"`), `503` security hold, busy (`code: "E_BUSY"`,
+`Retry-After: 5`, `retryAfter: 5`) or audit policy, or no credential configured with
+`NODE_ENV=production`, `500` engine error (audited as `status=error`).
+
+### Error bodies and the reference
+
+Since 1.33.0 every error response of the API (status 400 and above with an `error`) carries
+`reference`: 8 hexadecimal characters the person can quote. That includes the errors answered
+before the routes run: a malformed or oversized body (`400` `Malformed request body`, `413`)
+and a refused browser origin (`403` `E_CORS_ORIGIN`). It is the start of the request's
+correlation id, which the audit row (`correlation_id`) and every log line of the request
+carry. To find the request, filter `rosie_audit_log` on `correlation_id` starting with the
+reference, or search the log for `"reference":"<reference>"` (the `error_response` line; a
+body or origin error has no audit row). A streamed `error` event carries it too.
+
+```json
+{ "error": "Something went wrong processing your question. Please try again.", "reference": "3f2a9c10" }
+```
+
+### Requests turned away before they are read
+
+Since 1.33.0 a `401`, a `429`, a busy `503`, a security or column-grant hold and an
+audit-policy refusal are each counted (`rosie_refused_total{route,reason}`,
+[MONITORING.md](MONITORING.md)) and leave an audit row with `status=refused`,
+`rejection_reason` `unauthenticated`, `rate_limited`, `busy`, `security_hold`,
+`column_grants_hold` or `audit_unavailable`, the person (the host's `user.id` under the
+static token, `unauthenticated` for a bad token), the address and the correlation id, and no
+question text. Per route, reason, address (grouped as the rate limiter groups it) and person
+(when the request names one), the first refusal of a minute is written as its own row; when
+that minute ends, one more row says in `error_message` how many more there were ("3 more
+refusals like this one (HTTP 429 on ask) between ... and ... were not recorded one by one"),
+whether or not another refusal arrives. A client that keeps one identity and ignores
+`Retry-After` therefore cannot flood the trail. The person comes from the request, so a
+holder of the API token who sends a different `user.id` with every request gets one row per
+request for its refusals (as many as it sends); with a verified JWT the person cannot be
+changed that way. The counter counts every one. An audit-policy refusal is counted but
+its row is not written: nothing can record it, which is why it was refused.
 
 ### Streaming the answer
 
@@ -197,7 +270,8 @@ Response `200`: `{ "columns": [{ "key": "n", "label": "n" }], "rows": [...], "ro
 project): the reason is never disclosed. `400` if the SQL no longer passes the validator.
 `403` when a row policy refuses the caller (`docs/ROW_POLICIES.md`). `500` when the query
 fails. Audited as `status=export` (or `export_rejected` / `export_denied` /
-`export_error`).
+`export_error`); since 1.33.0 under the person who asked (the handle carries them) and with
+the statement that ran (the export cap in place of the display cap) in `sql_generated`.
 
 ## POST /explain
 
@@ -223,7 +297,9 @@ the handle has expired or is missing. `400` when `messageId` is missing or `rati
 ```
 
 Response: `{ "ok": true }`. Stored in `rosie_feedback` with the question and SQL snapshot
-taken from the handle when it still verifies and is the handle of that `messageId`.
+taken from the handle when it still verifies and is the handle of that `messageId`. Since
+1.33.0 the rating is recorded under the person who asked, as the handle names them; with no
+valid handle, under the `user.id` of the body, else the account.
 
 ## POST /certify (off by default)
 
@@ -272,7 +348,7 @@ Metadata the widget needs before the first question, plus the security gate stat
 {
   "name": "Sales", "fullName": "…", "description": "…", "welcomeMessage": "…",
   "suggestions": [ "…" ], "aiDisclaimer": "…", "governance": { "owner": "…" }, "theme": null,
-  "brand": null, "widgetVersion": "2026.11.11",
+  "brand": null, "widgetVersion": "2026.11.17",
   "maxInputLength": 2000,
   "securityHold": false, "securityCode": null, "securityMessage": null, "supportContact": null
 }
@@ -282,6 +358,14 @@ Metadata the widget needs before the first question, plus the security gate stat
 widget stops the typing there. `brand` is the validated white-label block of `project.json`
 (`assistantName`, `tagline`, `hideMascot`) or `null`. `widgetVersion` is the version of the
 bundle this backend serves at `/widget.js`; a copied widget compares itself with it.
+Since 1.33.0 `securityMessage` and `supportContact` are written for the person asking:
+"Rosie is paused while a security setting is fixed. Your question was not run." and "Please
+tell <who>, and quote the code.", where `<who>` comes from `project.json` `"supportContact"`
+(a string, or `{ "name": "Maria in IT", "contact": "it@example.com" }`; plain text, 160
+characters at most), or a generic sentence when it is not set. Which account, privilege or
+setting is behind the hold is in the server log, `/health` and the console, never here.
+`supportContact` is `null` outside a hold. A held request's `503` carries the same
+`supportContact`.
 `securityHold: true` means every question is refused until an administrator fixes the
 grants: either the read-only user has more than SELECT privileges, or (since 1.31.0, with
 the column-grant gate on: by default in strict mode, or with `ROSIE_REQUIRE_COLUMN_GRANTS=true`
@@ -296,11 +380,57 @@ The widget bundle this backend was deployed with, as `application/javascript`. I
 and answers `304` to a matching `If-None-Match`. `404` when the deployment does not ship the
 bundle.
 
+What the widget sends and reads (since 1.33.0, widget 2026.11.17):
+
+- Requests to its own origin carry `X-Rosie-Widget-Version: <version>`; across origins it
+  leaves the header out (a server before 1.33.0 refuses it in the preflight). `/ask` also
+  carries `widgetVersion` in its body, so the version is recorded from any origin. Rosie's
+  CORS layer allows the header since 1.33.0; a reverse proxy that answers preflights itself
+  must list it in `Access-Control-Allow-Headers`.
+- Element attributes: `locale` (BCP 47; number separators and the CSV rule, default the
+  browser's language, else `en`) and `timeout-seconds` (how long it waits for `/ask`,
+  default `130`). On a `401` the element dispatches `rosie:auth-expired` (bubbles, composed,
+  `detail.path`).
+- It reads `reference` from error bodies (also `ref` or `correlationId`), `code: "E_BUSY"`
+  or a numeric `retryAfter` for a busy `503` (asked again twice), `blocked` on `/ask`, and
+  `securityMessage`, `supportContact` and `securityCode` from `/project-info` (or `error`,
+  `supportContact` and `code` of a `503` body) for a hold.
+- CSV exports start with a UTF-8 byte order mark; in a locale whose decimal mark is a comma
+  they use `;` and decimal commas ([WIDGET.md](WIDGET.md#the-csv-file-carries-the-verdict)).
+
 ## GET /health (public)
+
+`status` says whether Rosie answers (since 1.33.0):
+
+| `status` | HTTP | Meaning |
+|---|---|---|
+| `ok` | 200 | Answering, and both audit sinks are recording |
+| `degraded` | 200 | Answering, but an audit sink is failing (`audit` says which; the default `fail-open` policy keeps answering while one records), or the model provider refused the key recently (`refusing` has `model_key_refused`) |
+| `unavailable` | 503 | Every question is refused. `refusing` lists why, as `{ "code", "reason" }` |
+
+The codes in `refusing`: `assistant_disabled` (`AI_ASSISTANT_ENABLED=false`),
+`model_key_missing` (`OPENAI_API_KEY` unset or not usable), `model_key_refused` (the provider
+answered 401 or 403 to model calls: reported after a second refusal, or once the first is 30
+seconds old with no success since, so one stray 403 changes nothing; it makes `status`
+`degraded`, not `unavailable`, and clears at the next call that succeeds or 10 minutes after
+the last refusal), the security-hold code of the
+read-only account's privilege check (for example `E_DB_RO_NOT_SEGREGATED`), the column-grant
+hold code (`E_COLUMN_GRANTS_*`), and the audit gate's code under `ROSIE_AUDIT_POLICY=fail-closed`.
+`refusing` is `[]` otherwise. Until 1.33.0 `status` was about the audit trail only, so it
+said `ok` (and the Docker `HEALTHCHECK` said healthy) while every question got 503. A load
+balancer or the `HEALTHCHECK` reads the HTTP code. A refused key is not a 503: /health makes
+no model call, so it only knows what earlier calls saw, and a 503 there would keep a
+balancer from sending the question that shows the key works again. This is a readiness
+check: the cause of a 503 is the configuration (a setting, the database grants), and
+restarting with the same configuration does not change it. Fix the cause: a grant change is
+picked up by the next check (every 15 minutes) or by a restart, a setting by a restart. A
+liveness probe that restarts the process on failure should use `GET /health/live`, which
+answers `200 { "status": "alive" }` while the process serves HTTP.
 
 ```json
 {
   "status": "ok",
+  "refusing": [],
   "audit": { "dbHealthy": true, "schemaBlockedTables": null, "pendingRetries": 0,
              "dbWriteFailures": 0, "droppedRecords": 0, "rejectedRows": 0,
              "lastDbFailureAt": null,
@@ -345,17 +475,18 @@ listed in `"reviewedRoutines"` and MySQL definer views the check could not read
 masked columns only. `columnGrantsRequired` is `ROSIE_REQUIRE_COLUMN_GRANTS` as in effect (by default `false` in express mode and `true` in strict), and `hold` is true
 when it is on and that context refuses requests. The `/health` of `npm run mcp:http` carries
 the same fields, and its `status` is `security_hold` during a hold. It names no column; the
-server log, `npm run doctor` and `/admin/overview` (`status.maskedColumns`) do. It does not
-change `status` here. How to read it and what to grant:
+server log, `npm run doctor` and `/admin/overview` (`status.maskedColumns`) do. A hold makes
+`status` `unavailable` here too (since 1.33.0; before, it did not change `status`). How to
+read it and what to grant:
 [INSTALL.md](INSTALL.md#check-what-the-read-only-account-can-read).
 
 With the gate is on (`ROSIE_REQUIRE_COLUMN_GRANTS`: on by default in strict mode, and can be set explicitly in either mode), `/ask`, `/export`, `/explain` and `/certify` of a
 held context answer `503` with
-`{ "error": "<message>", "code": "<code>", "securityHold": true, "columnGrantsHold": true }`,
+`{ "error": "<message>", "code": "<code>", "supportContact": "<whom to tell>", "securityHold": true, "columnGrantsHold": true, "reference": "<8 hex>" }`,
 where `code` is `E_COLUMN_GRANTS_NOT_CHECKED` (not checked yet, the check could not run, or a
 reloaded context is being checked), `E_COLUMN_GRANTS_NOT_ENFORCED` ("masked by Rosie only")
-or `E_COLUMN_GRANTS_SQLSERVER_NOT_VERIFIED` ("not verified on SQL Server"). The message names
-no column.
+or `E_COLUMN_GRANTS_SQLSERVER_NOT_VERIFIED` ("not verified on SQL Server"). The message is in
+plain words for the person asking and names no column and no setting (since 1.33.0).
 
 `status` is `degraded` while either audit sink is failing; page on `dbHealthy=false` or
 `fileSinkOk=false` (a governance control that fails silently is not a control).
@@ -383,6 +514,11 @@ reason when the new context does not build, in which case the context in service
 unchanged. With the column-grant gate on (by default in strict mode) the summary also carries `"pending": true`:
 the new context is swapped in once its masked-column check has run, and the context in
 service keeps serving until then. See [OPERATIONS.md](OPERATIONS.md).
+Since 1.33.0 a reload is recorded in the audit file like the console's changes
+(`rosie_admin_change`, `action: "reload"`): the attempt before it runs (the reload is
+refused with `503` if that cannot be written), then the outcome with who did it (the
+verified administrator, or the `by` of the body under the shared token), the new context
+version and whether it worked.
 
 ## GET /admin/overview and GET /admin/console (the admin token)
 

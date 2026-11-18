@@ -44,10 +44,14 @@ export OPENAI_API_KEY=sk-...
    ```
 
    It reads the schema, writes the context and the `.env`, creates the read-only account
-   `rosie_readonly` with `SELECT` on the whole schema (on MySQL the whole database), and
-   creates Rosie's own tables in a separate database, `rosie`, which it creates and names in
-   `DB_ENGINE_DATABASE`, so the express account cannot read them (Step 2). The masking mode
-   is express.
+   `rosie_readonly` with `SELECT` on the whole schema (on MySQL the whole database), creates
+   Rosie's own tables in a separate database, `rosie`, which it creates and names in
+   `DB_ENGINE_DATABASE`, so the express account cannot read them (Step 2), and creates the
+   engine account `rosie_engine`, which can only read and add rows in those tables. The
+   `.env` gets these two accounts, a generated `ROSIE_API_TOKEN` and `ROSIE_HANDLE_SECRET`;
+   the account in the URL is used only during setup. The masking mode is express. Before it
+   writes anything it prints the list, and a wrong model key stops it at once with one line.
+   A password with special characters goes percent-encoded in the URL (`#` is `%23`).
 3. **Start Rosie.**
 
    ```bash
@@ -56,6 +60,10 @@ export OPENAI_API_KEY=sk-...
 
 Then review what the wizard wrote, personal data first ("What the wizard leaves for a person",
 below), and run `npm run doctor`, which prints the fix next to each problem.
+
+Running the wizard again is safe: it reuses the accounts and the database it finds (see
+[Running the wizard again](#running-the-wizard-again)). To remove everything it created, see
+[Uninstall](#uninstall); to move to a new version, [Upgrading](#upgrading).
 
 In express mode Rosie's validator refuses statements that reach a masked column, and the
 database account can read those columns. If your data needs the database to deny them too,
@@ -139,13 +147,51 @@ which masking mode was chosen, what it means, and how to change it later
 | `--url <url>` | `mysql://...`, `postgres://...` or `mssql://...`. The scheme selects the engine. To keep the password out of your shell history, put the URL in the `DB_URL` environment variable instead. |
 | `--name <name>` | Project name. Default: the database name. |
 | `--masking express\|strict` | How masked columns are protected ([Choosing a masking mode](#choosing-a-masking-mode)); `--masking=strict` works too. Default `express`. Without it the wizard asks after it connects, offering the earlier choice on a re-run; with `--url` or `--yes` and no `--masking`, the mode is express. Any other value stops the wizard. Written to the `.env` as `ROSIE_MASKING_MODE`, with a two-line comment. |
-| `--create-ro-user` | Creates `rosie_readonly`, a user that can only SELECT, with a generated password written to the `.env`. In express mode it grants `SELECT` on the whole schema (PostgreSQL, SQL Server) or database (MySQL), plus what the engine needs to connect (`CONNECT` and `USAGE` on PostgreSQL). In strict mode it grants table by table, and on tables with masked columns only the unmasked columns, from the catalog and the masks (Step 2), and without a catalog it does not create the user. **Writes to your database**; needs an account allowed to create users. If it cannot, the statements to run are printed. On PostgreSQL and SQL Server the statements run in one transaction, so a failure leaves nothing behind; on MySQL they stop at the first failure, and the wizard says the account exists but is incomplete, lists what ran and what did not, and prints the `DROP USER` to clean up. Without this option no user is created. |
+| `--create-ro-user` | Creates two accounts, each with a generated password written to the `.env` only. The engine account (`rosie_engine`, `DB_USER`) gets `SELECT` and `INSERT` on Rosie's four tables, plus `UPDATE` and `DELETE` on `rosie_rate_limit`, and nothing else; it is created only once those tables exist (with a separate engine database the wizard creates them; in your own database it needs `--create-engine-tables`, or it prints the statements). The account in `--url` is then never written to the `.env`. The read-only account `rosie_readonly`, a user that can only SELECT: In express mode it grants `SELECT` on the whole schema (PostgreSQL, SQL Server) or database (MySQL), plus what the engine needs to connect (`CONNECT` and `USAGE` on PostgreSQL). In strict mode it grants table by table, and on tables with masked columns only the unmasked columns, from the catalog and the masks (Step 2), and without a catalog it does not create the user. **Writes to your database**; needs an account allowed to create users. If it cannot, the statements to run are printed. On PostgreSQL and SQL Server the statements run in one transaction, so a failure leaves nothing behind; on MySQL they stop at the first failure, and the wizard says the account exists but is incomplete, lists what ran and what did not, and prints the `DROP USER` to clean up. Without this option no user is created. |
 | `--create-engine-tables` | Creates Rosie's four engine tables (`rosie_audit_log`, `rosie_answer_certificate`, `rosie_feedback`, `rosie_rate_limit`). **Writes to your database.** Without this option no table is created, except as below. |
 | `--engine-db <name>` | Where Rosie's own tables go. In express mode, a run without questions (`--url` or `--yes`) that has `--create-ro-user` or `--create-engine-tables` and no `--engine-db` puts them in a separate database, `rosie`: the wizard creates it on all three engines, creates the tables there (also with `--create-ro-user` alone) and writes `DB_ENGINE_DATABASE=rosie`. `--engine-db same` (or the business database's own name) keeps them next to your data, where the express account can read them. In strict mode they stay in your database unless you name one. The interactive interview asks, with `rosie` as the default; an earlier answer or `DB_ENGINE_DATABASE` is kept. The final report has one line on where they went. |
-| `--samples` | Lets sample values of unmasked columns go to the model provider while the context is generated. Descriptions and enum codes come out better. Off by default. |
+| `--ro-user <name>`, `--engine-user <name>` | Names of the two accounts (defaults `rosie_readonly` and `rosie_engine`), for example for two projects on one server. |
+| `--rotate-passwords` | On a re-run, sets new passwords on accounts that already exist (written to the `.env`). |
+| `--env-dir <dir>` | Where the `.env` is written (created when missing). Default: the repository root. |
+| `--samples` | Sends up to 5 sample values of each unmasked column to the model provider while the context is generated. Descriptions and enum codes come out better. Off by default. |
 | `--context <dir>` | Where to write the context. Default: `contexts/my-project`. |
 
-Without `--url`, `npm run init` asks the same things interactively.
+Without `--url`, `npm run init` asks the same things interactively. It needs a terminal for
+that: with piped input and no `--url` or `--yes` it stops with exit code 2 and says how to run
+without questions.
+
+What the wizard checks and prints before it writes:
+
+- **The banner** says whether this run writes to the database server. Without
+  `--create-ro-user` or `--create-engine-tables` nothing is written there. With them, after
+  the connection it lists exactly what it will create (accounts, database, tables), and says
+  that the account in the URL is not written to the `.env`.
+- **The model key.** One short call right after the connection. A refused key (401 or 403)
+  stops the wizard with exit code 1 and the line `the model provider refused the key: check
+  OPENAI_API_KEY / AI_BASE_URL`; an unknown model (404) names `AI_MODEL`. Nothing is written
+  to the database and no `.env` is written; the answers given so far are kept in
+  `<context>/.bootstrap/answers.json` (no secret in it) as the defaults of the next run.
+- **The model** it writes to the `.env` is the server's default (`gpt-6.1-terra`) unless
+  `AI_MODEL` is set.
+- If `system-prompt.txt` could not be written (the model step failed), it exits 1 after the
+  report, since the server cannot start without it.
+
+### Running the wizard again
+
+A re-run never fails on what the first run created:
+
+- **Accounts.** An account that exists is not created again. When the `.env` (or the
+  `.env.rosie-init` an earlier run wrote) holds a password for it that still connects, it is
+  kept and its grants are applied again (a strict catalog may have gained tables). Otherwise
+  it is left as it is and the wizard says so: put its password in the `.env`, re-run with
+  `--rotate-passwords` (a new password, also for any other application using it), or pick
+  another name with `--ro-user` / `--engine-user`. Interactively it asks instead.
+- **The engine database and tables** are reused; the schema files only create what is
+  missing.
+- **The `.env`.** An existing `.env` is never overwritten without a question (never in
+  `--yes` or `--url` runs: the result goes to `.env.rosie-init`). That file keeps the
+  `ROSIE_API_TOKEN`, the `ROSIE_HANDLE_SECRET` and the accounts of your `.env`, and the
+  wizard lists what it kept, so merging it changes nothing behind your callers.
 
 What the wizard leaves for a person:
 
@@ -172,8 +218,8 @@ What the wizard leaves for a person:
    in three places:
    - `ROSIE_CORS_ORIGIN` is written as `http://localhost:4200`. Set it to the origin of the
      pages that embed the widget (Step 5).
-   - `ROSIE_HANDLE_SECRET` is not written. Without it answer handles stop working at every
-     restart and are not accepted by another replica.
+   - `ROSIE_HANDLE_SECRET` is generated (since 1.33.0). Give every replica the same value;
+     with different ones a handle minted by one is refused by another.
    - `TRUST_PROXY` is commented out. Behind a reverse proxy, set it, or every user shares one
      rate-limit bucket (Step 6d).
 4. **Measure it.** There are two question banks, read by two commands:
@@ -198,7 +244,8 @@ created (`docker login ghcr.io`), or load the file you received
 mkdir -p rosie-context rosie-env
 docker run --rm -v "$PWD/rosie-context:/context" -v "$PWD/rosie-env:/out" \
   -e OPENAI_API_KEY -e DB_URL='postgres://user:password@host:5432/dbname' \
-  <image> node scripts/rosie-init.js --context /context --env-dir /out --name "My Project"
+  <image> node scripts/rosie-init.js --context /context --env-dir /out --name "My Project" \
+  --create-ro-user --create-engine-tables
 
 docker run -d -p 3001:3001 --env-file rosie-env/.env -v "$PWD/rosie-context:/context:ro" \
   -v rosie-logs:/app/logs <image>
@@ -208,6 +255,12 @@ docker run -d -p 3001:3001 --env-file rosie-env/.env -v "$PWD/rosie-context:/con
 question and answer that survives a database outage. Without a volume it lives inside the
 container and is thrown away when the container is replaced, for example on every upgrade.
 `npm run doctor` (run inside the container) warns when the directory is not a mounted volume.
+
+Inside the container `127.0.0.1` is the container itself: for a database on the same machine
+use `host.docker.internal` (Docker Desktop; on Linux add `--add-host=host.docker.internal:host-gateway`)
+in the URL. Without `--create-ro-user` the server runs its questions on the account in the
+URL, which the permission check refuses: every question is answered 503 until a read-only
+account is set.
 
 The two directories must be writable by the container's user (uid 1000). The context lands
 in `./rosie-context` and the configuration in `./rosie-env/.env`, already pointing at
@@ -509,9 +562,12 @@ at; it is not a proof that no other path exists:
     held by a role is judged from the grant). An `SQL SECURITY INVOKER` view the account reads
     directly is allowed; one reached from a definer view runs as that definer and is read as
     part of it;
-  - SQL Server: every object of the current database the login has `SELECT`, `EXECUTE` or a
-    column grant on (tables, views, synonyms, table and scalar functions, procedures, CLR and
-    aggregate functions, extended procedures); every linked server with data access (the
+  - SQL Server: every object of the current database the login has `SELECT`, `EXECUTE`,
+    `RECEIVE` or a column grant on, whatever its type (tables, views, synonyms, table and
+    scalar functions, procedures, CLR and aggregate functions, extended procedures, external
+    tables, Service Broker queues, and any type SQL Server adds later), except the types that
+    cannot return data: constraints and defaults, rules, triggers, internal and system
+    tables, table types, plan guides and sequences; every linked server with data access (the
     login cannot see `sys.linked_logins`, so a mapping cannot be ruled out); every other user
     database the login can open (`master`, `tempdb`, `model` and `msdb` skipped). Only the
     `sys` and `INFORMATION_SCHEMA` schemas are left out. Objects flagged as shipped by
@@ -650,6 +706,7 @@ Many of them passed in 1.31.0:
 | A definer routine the account may execute | MySQL | Listing it in `"reviewedRoutines"`, or taking the `EXECUTE` away |
 | A function or procedure the account may execute, a static one included | SQL Server | Listing it in `"reviewedRoutines"`, or taking the `EXECUTE` away |
 | A synonym | SQL Server | Taking the permission away, or listing it in `"reviewedViews"`. A synonym for a masked catalog table is reported as reading it, and listing does not accept it |
+| An external table, a Service Broker queue, or any other object type that can return data | SQL Server | Taking the `SELECT` (and, for a queue, `RECEIVE`) away, or reviewing it and listing it in `"reviewedViews"` |
 | A linked server with data access | SQL Server | Removing it, or the data access. It cannot be listed |
 | Another user database the login can open | SQL Server | Removing the login's user in that database. It cannot be listed |
 
@@ -1001,7 +1058,10 @@ tables:
 | `rosie_rate_limit` | Quota counters, used only with `ROSIE_RATE_LIMIT_STORE=database` |
 
 Create a database for them, apply the schema file **inside that database**, and create the
-account of the main pool. Run this with an account that may create databases and users:
+account of the main pool. `npm run init -- --create-ro-user` does all of this for you (the
+account is `rosie_engine`; the wizard prints the statements in your engine's syntax when it
+cannot). Never put the administrator account in `DB_USER`. By hand, run this with an account
+that may create databases and users:
 
 ```bash
 mysql -u <admin_user> -p -e "CREATE DATABASE rosie"
@@ -1216,7 +1276,7 @@ Start and confirm a clean boot:
 ```bash
 npm run doctor
 npm start
-curl localhost:3001/api/assistant/health        # {"status":"ok", ...}
+curl localhost:3001/api/assistant/health        # {"status":"ok","refusing":[], ...}; 503 "unavailable" says why
 curl localhost:3001/api/assistant/project-info   # should reflect the host app's project.json
 ```
 If `project-info` returns `securityHold: true`, the Step 2 probe failed: review the
@@ -1246,6 +1306,21 @@ The backend serves the exact widget it was deployed with at `GET /api/assistant/
 Every backend deploy now carries its widget fixes to every host automatically; nothing to
 re-copy, nothing to forget. `/project-info` reports `widgetVersion`, and an embedded copy
 that drifts from it logs a console warning.
+
+Two optional attributes (since 1.33.0): `locale` (`locale="pt-BR"`: number separators and
+the CSV separator follow it; default the browser's language) and `timeout-seconds` (how long
+the widget waits for an answer, default 130). On a `401` the element fires
+`rosie:auth-expired`, which a host page with expiring tokens can listen to:
+
+```js
+document.querySelector('rosie-widget').addEventListener('rosie:auth-expired', function () {
+    /* refresh the session, then set api-token again if it is the user's JWT */
+});
+```
+
+The widget sends `X-Rosie-Widget-Version` on requests to its own origin, and its version in
+the `/ask` body from any origin; the server adds it to the audit row's user agent. A proxy
+that answers CORS preflights itself must allow that header ([WIDGET.md](WIDGET.md)).
 
 ### 6b. Alternative: copy the bundle into the host app's assets (legacy)
 ```bash
@@ -1303,8 +1378,11 @@ Two settings on the Rosie side go with the proxy:
   whatever the client sends and makes the limits spoofable.
 - **`ROSIE_CORS_ORIGIN`.** The origin check runs on every request that carries an `Origin`
   header, through the proxy or not. A request from an origin that is not listed is refused
-  with HTTP 500 and a `request_error` line in the log saying `CORS: origin not allowed`.
-  Keep the variable at the origin of the host app's pages.
+  with HTTP 403, a body naming the origin and `ROSIE_CORS_ORIGIN`, and one
+  `cors_origin_refused` line in the log per origin (until 1.33.0, HTTP 500 without the
+  origin). Keep the variable at the origin of the host app's pages, written
+  `https://host[:port]` with no trailing slash; `npm run doctor -- --origin https://your.site`
+  says whether a page there would be allowed.
 
 Pointing `api-url` at the backend's absolute URL (with `ROSIE_CORS_ORIGIN` set) is for
 development, or for the JWT setup above. With the shared token it forces the token into the
@@ -1362,6 +1440,13 @@ Final checklist:
 ---
 
 ## Upgrading
+
+In short: get the new version (`git pull` or the release tag, then `npm ci`; with Docker the
+new image tag), run your engine's schema file on the engine database, read the
+"Upgrading to" notes below for every version between yours and the new one, run
+`npm run check-context` and `npm run doctor`, and restart. In the notes, look for three
+things: a setting whose default changed, a grant or table the release needs, and anything
+the release starts refusing. Each note says whether the upgrade changes a grant or a setting.
 
 1. **Get the new version.** With Docker, pull the new tag and change the tag in your
    deployment. From a checkout, `git pull` (or check out the release tag) and `npm ci`. The
@@ -1510,6 +1595,113 @@ Final checklist:
      hand), set `ROSIE_MASKING_MODE=strict` to keep the warnings and get the gate by default.
      Check `npm run grants -- --verify` first: in strict mode a context that is not "masked by
      the database" is held.
+
+   **Upgrading to 1.33.0.** No grant and no table is changed by the upgrade. Two defaults
+   change (`AI_ASSISTANT_ENABLED` is on when unset; settings are read strictly) and the setup
+   wizard creates one more account. Run `npm run doctor` before you restart: its "Settings"
+   line lists every value the new version refuses. What you may notice:
+
+   *Settings and startup*
+
+   - **Number and list settings are read strictly.** A number with a unit (`10s`), in
+     exponent form (`1e3`), negative, or outside its range, and an unknown value of a closed
+     list (`ROSIE_RATE_LIMIT_STORE`, `LOG_LEVEL`, `LOG_FORMAT`, `AI_API`, `DB_DIALECT`,
+     `TRUST_PROXY`), now stop the server with `config_invalid` naming the setting and what it
+     accepts. Before, each was read as something else without a word (`AI_QUERY_TIMEOUT_MS=10s`
+     was 10 milliseconds). Values that were silently replaced by the default are refused too:
+     `ROSIE_PERMCHECK_INTERVAL_MS` under 60000, `ROSIE_COLUMN_GRANTS_MAX_AGE_MS` under 60000
+     or over 86400000, `ROSIE_COLUMN_GRANTS_CHECK_TIMEOUT_MS` under 1000. Run
+     `npm run doctor` before restarting: its "Settings" line lists every one.
+   - **`AI_ASSISTANT_ENABLED` is on when unset.** `false` still switches the answering routes
+     off. A deployment that relied on leaving it unset to keep Rosie off must now write
+     `AI_ASSISTANT_ENABLED=false`.
+   - **`/health` answers 503 `unavailable` while questions are refused** (a security or
+     column-grant hold, the assistant off, the model key missing, the fail-closed audit
+     gate), with the reasons in `refusing`. A load balancer and the Docker `HEALTHCHECK` now
+     see it. A key the provider keeps refusing makes it `degraded` (200), with
+     `model_key_refused` in `refusing`, until a call succeeds or 10 minutes pass without a
+     refusal. Point a liveness probe that restarts the process at
+     `/health/live` instead ([API.md](API.md#get-health-public)).
+   - **A browser origin not in `ROSIE_CORS_ORIGIN` gets 403**, not 500.
+   - **Warnings at startup**: a `ROSIE_` name Rosie does not read, or an `AI_`/`DB_` name one
+     typo away from a setting (`setting_unknown`, "did you mean"); unknown keys in the context
+     files (`context_key_unknown`). They change nothing; `npm run doctor` and
+     `npm run check-context` list them.
+   - **The context is checked before the server loads it.** A missing `system-prompt.txt` or
+     other required file, and a `calendar` value the prompt cannot carry (a
+     `fiscalYearStartMonth` outside 1 to 12, a `weekStartsOn` that is not a day, a `timezone`
+     that is not an IANA name), stop it with one line (`startup_failed`). `check-context`
+     fails on the same values.
+   - **A refused model key is said once**: `model_key_refused`, "the model provider refused
+     the key: check OPENAI_API_KEY / AI_BASE_URL", instead of one line per call (again after
+     10 minutes if the key stays wrong).
+   - `.env.example` now opens with the short list of settings a small installation needs;
+     every other setting is below it, commented out at its default. `npm run doctor --
+     --settings` prints what is in effect, secrets redacted.
+
+   *Setup wizard (`npm run init`)*
+
+   - With `--create-ro-user` it also creates an engine account (`rosie_engine`, `SELECT` and
+     `INSERT` on Rosie's tables only) and writes it as `DB_USER`; the account in `--url` is no
+     longer written to the `.env`. An installation made before 1.33.0 still runs its main
+     pool as the setup account: create the engine account (Step 3, or run the wizard again
+     with `--create-ro-user`: it reuses the read-only account it finds) and put it in
+     `DB_USER` / `DB_PASSWORD`.
+   - It writes `ROSIE_HANDLE_SECRET`, and the `AI_MODEL` the server recommends
+     (`gpt-6.1-terra`) instead of `gpt-6-luna` when none is set.
+   - A re-run reuses existing accounts and the engine database, and its `.env.rosie-init`
+     keeps your token, handle secret and accounts ([Running the wizard again](#running-the-wizard-again)).
+   - It stops at once on a refused model key (exit 1), and on piped input without `--url`
+     or `--yes` (exit 2), where it used to exit 0.
+   - `npm run -s grants > grants.sql` on SQL Server starts with `USE [<database>]` and `GO`,
+     so it runs as `sa` without `Msg 15151`; on PostgreSQL its first line says which database
+     to connect to. `npm run grants -- --help` prints help.
+
+   *Audit trail and API*
+
+   - **PostgreSQL engine tables are written in UTC.** On a host whose time zone is not UTC,
+     the times of `rosie_audit_log`, `rosie_answer_certificate` and `rosie_feedback` were
+     stored in the host's local time and read as UTC (a Docker container on UTC was not
+     affected; MySQL and SQL Server were not affected). Rows written before the upgrade on
+     such a host stay shifted by the host's offset; keep that in mind when you compare
+     periods across the upgrade.
+   - **More rows in `rosie_audit_log`.** Every refusal is recorded: the route's injection
+     filter and length check (`status=blocked`), and requests turned away at the door
+     (`status=refused`: rate limit, busy, bad token, security hold; per route, reason,
+     address and person, the first of a minute and then one row with how many more there
+     were). `npm run weekly-report` does not count `refused` rows,
+     exports or explanations as questions, nor `authenticated` as a person. The console's
+     counts come from the telemetry counters, which skip `refused` rows but still count
+     exports and explanations, under the status `other`, as before.
+   - **Exports, explanations and ratings are recorded under the person** who asked (the
+     host's `user.id`), not `authenticated`. The audit file's `sql_trace` entries are now
+     objects (`{ sql, outcome, reason, rows }`) instead of strings; a script that reads them
+     must change.
+   - The `/ask` body gains `blocked` and `reason`, and every error body a `reference`. The
+     security hold text no longer names settings; put whom to tell in `project.json`
+     `"supportContact"` ([API.md](API.md), `/project-info`).
+
+   *Widget*
+
+   - **The widget's messages are new sentences**, written for the person asking, never the
+     browser's or the server's raw text: "Cannot reach Rosie", "Your session has expired"
+     (and a `rosie:auth-expired` event the host page can listen to), "Rosie is paused" for a
+     security hold (with the server's plain message, `supportContact` and the code), and a
+     `Reference: ...` line when the server sends one.
+   - **The widget waits 130 seconds** for an answer (90 before); the `timeout-seconds`
+     attribute changes it. A busy server (503 `E_BUSY`) is asked again twice, about 15
+     seconds in all, before the message.
+   - **Numbers follow the browser's locale** in the card and the table (`20.848,62` in
+     Portuguese, with English words until the translations arrive). `locale="en"` on the
+     element keeps the old look.
+   - **CSV files** start with a UTF-8 BOM, and in a locale whose decimal mark is a comma they
+     use `;` between cells and a decimal comma, which is what Excel there expects. A script
+     that reads files exported from such a browser must accept `;`.
+   - The widget names its version: the `X-Rosie-Widget-Version` header to its own origin, and
+     `widgetVersion` in the `/ask` body from any origin. The audit row's user agent ends with
+     ` rosie-widget/<version>`. A reverse proxy that answers CORS preflights itself must allow
+     the header (Rosie's own CORS layer allows it).
+   - A refused question (`blocked: true`) shows no thumbs and no "nothing was checked" line.
 4. **Restart every replica**, then run `npm run doctor`. A widget loaded from
    `/api/assistant/widget.js` follows the backend by itself; a copied one must be copied
    again (6b).
@@ -1518,6 +1710,55 @@ Final checklist:
    answered.
 
 To go back, deploy the previous tag.
+
+---
+
+## Uninstall
+
+Stop Rosie first. With `--create-ro-user` the wizard created, on the database server, the
+read-only account, the engine account and (express default) the engine database `rosie` with
+Rosie's four tables in it. Its final report prints these statements with the names it used;
+the defaults are below. Run them as an administrator. Dropping the engine database deletes
+the audit trail and the feedback: export what you must keep first (`npm run audit-report`).
+
+PostgreSQL, connected to your business database, then to any other database (for example
+`postgres`):
+
+```sql
+-- connected to <your database>
+DROP OWNED BY rosie_readonly;
+-- connected to postgres
+DROP DATABASE "rosie" WITH (FORCE);
+DROP ROLE IF EXISTS rosie_readonly;
+DROP ROLE IF EXISTS rosie_engine;
+```
+
+MySQL:
+
+```sql
+DROP USER IF EXISTS 'rosie_readonly'@'%', 'rosie_engine'@'%';
+DROP DATABASE `rosie`;
+```
+
+SQL Server (`sqlcmd` or SSMS):
+
+```sql
+USE [<your database>];
+DROP USER rosie_readonly;
+USE [master];
+ALTER DATABASE [rosie] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+DROP DATABASE [rosie];
+DROP LOGIN rosie_readonly;
+DROP LOGIN rosie_engine;
+```
+
+If the tables are in your business database (`--engine-db same`), drop the four tables
+(`rosie_audit_log`, `rosie_answer_certificate`, `rosie_feedback`, `rosie_rate_limit`) instead of
+the database; on PostgreSQL also run `DROP OWNED BY rosie_engine` there, and on SQL Server
+`DROP USER rosie_engine` there. Then delete the context directory, the `.env` (and any
+`.env.rosie-init`), and with Docker the containers and the `rosie-logs` volume
+(`docker volume rm rosie-logs`). Nothing in your business tables was changed, so nothing
+else needs undoing.
 
 ---
 

@@ -94,6 +94,18 @@ identity at all: those tools would go to everyone holding the credential.
 
 ## What a client sees (protocol surface)
 
+- **The rows are in the text (since 1.33.0).** The text block of an answer (`ask_data`,
+  `query_metric`, `run_approved_query`, `certify_sql`) ends with a compact Markdown table of
+  the first 20 rows, values exactly as the database returned them, cells cut at 80
+  characters, and a line saying how many rows there are ("20 of 42 rows shown here. The
+  structured content holds 30. export_answer returns more (up to 5000)."). A client or a
+  model that reads only text sees the figures; before 1.33.0 it read "Revenue per year is in
+  the table" with no table. The certificate words (a contradicted figure, warnings, what was
+  not established) still come before the table.
+- **Refusals are recorded.** A tool call refused by a hold or by the audit policy is counted
+  (`rosie_refused_total{route="mcp"}`) and audited like the HTTP route's refusals
+  ([API.md](API.md), "Requests turned away before they are read").
+
 - **Evidence, dimension by dimension.** `structuredContent.certificate.evidence` is declared
   in the output schema of `ask_data`, `query_metric`, `run_approved_query` and `certify_sql`,
   and the text block ends with a line starting `Not established:` that repeats
@@ -262,7 +274,9 @@ Clients send `POST /mcp` with `Authorization: Bearer <token>`. `GET /mcp` and `D
 answer 405, because there are no sessions. `GET /health` on the same port is public and
 answers `{ "status": "ok" }`, or `"security_hold"` while the read-only user has more than
 SELECT or a masked-column grant hold applies, with `columnGrantsRequired` and `columnGrants`
-as on the HTTP server's `/health` ([API.md](API.md)). It is a separate process from `npm start`, with its own port.
+as on the HTTP server's `/health` ([API.md](API.md)). Unlike the HTTP server's `/health`
+(which since 1.33.0 answers 503 `unavailable` with a `refusing` list), it keeps HTTP 200 and
+its own `security_hold` status. It is a separate process from `npm start`, with its own port.
 
 There are two verifiers:
 

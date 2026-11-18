@@ -37,7 +37,8 @@ does describe how the service is used.
 | Metric | Labels | Meaning |
 |---|---|---|
 | `rosie_questions_total` | `status` | One per audit record. For a question: `success`, `error`, `no_query`, `unfinished` (stopped by a limit before an answer query ran; counted under `no_query` until 1.27.0), `clarification`, `blocked`, `aborted`. Exports and explanations write audit records too, and theirs are counted here as `other` |
-| `rosie_blocked_total` | `reason` | Questions refused before any model call: `sensitive_info_requested`, `masked_column_requested`, `write_operation_requested`, `prompt_injection_detected` |
+| `rosie_blocked_total` | `reason` | Questions refused before any model call: `sensitive_info_requested`, `masked_column_requested`, `write_operation_requested`, `prompt_injection_detected`, and since 1.33.0 `input_too_long`, `question_too_short`, `raw_sql`, `provider_unavailable`. Before 1.33.0 the route's own injection filter and length check were not counted here (nor audited) |
+| `rosie_refused_total` | `route`, `reason` | Requests turned away before they were read (since 1.33.0). `route` is `ask`, `export`, `explain`, `feedback`, `certify` or `mcp`; `reason` is `rate_limited`, `busy`, `security_hold`, `column_grants_hold`, `audit_unavailable` or `unauthenticated`. Every refusal is counted; its audit row (`status=refused`) is written at most once a minute per route, reason and address. These are not questions and are not in `rosie_questions_total` |
 | `rosie_answers_total` | `source` | Answers that returned a result, by where the statement came from: `model_sql`, `approved_query`, `compiled_metric`, `certified_sql` (a statement sent to `/certify` or `certify_sql`) |
 | `rosie_certificates_total` | `verdict` | Certificates issued, by verdict ([CERTIFICATE.md](CERTIFICATE.md)) |
 | `rosie_assertions_total` | `check`, `result` | Each check that ran, with `pass`, `warn` or `fail` |
@@ -70,7 +71,11 @@ the HTTP server; MCP processes do not run that check.
 No question text, no SQL, no user id, no table or column name, no comment a user wrote.
 Label values come from fixed lists, and anything outside them is reported as `other`. A
 refusal for a masked column is counted as `masked_column_requested`; which column it was
-stays in the audit table, where access is controlled.
+stays in the audit table, where access is controlled. Since 1.33.0 that is also true of a
+masked column the model tried inside its loop and the validator refused: the audit row of
+that question carries `rejection_reason` `statement_refused:masked_column` (status
+`success` when another statement answered), and the audit file's `sql_trace` marks the
+statement `refused` with its reason.
 
 ## Alerts worth having
 
@@ -98,6 +103,10 @@ groups:
         for: 10m
       - alert: RosieContradictedAnswers
         expr: increase(rosie_certificates_total{verdict="CONTRADICTED"}[1h]) > 0
+      - alert: RosieTurningPeopleAway
+        expr: sum(increase(rosie_refused_total{reason=~"rate_limited|busy"}[1h])) > 20
+      - alert: RosieInjectionAttempts
+        expr: increase(rosie_blocked_total{reason="prompt_injection_detected"}[1h]) > 5
 ```
 
 Two ratios are worth a panel even without an alert:
@@ -132,7 +141,17 @@ message text. The masked-column check has no metric for its result; `/health` ca
 | `views_not_checked` | warn | The views could not be read, so the context is not reported as masked by the database (1.31.0) |
 | `read_only_pool_drained` | info | The read-only pool's connections were replaced after the check's result changed or a reload (`reason`, `from`, `to`) (1.31.0), and since 1.32.0, with the gate on, after every passing check (`reason` `passing_check`) |
 | `column_grants_required` | info | Once at every start of the HTTP server and both MCP servers (since 1.32.0; in 1.31.0 only when the gate was on): `maskingMode`, `required`, `source` (`masking mode` when the gate follows the mode's default, `ROSIE_REQUIRE_COLUMN_GRANTS` when it was set explicitly) and, for an explicit value, `raw` (the value as written; the message reads `set explicitly: ROSIE_REQUIRE_COLUMN_GRANTS="<raw>", read as on` or `off`). An alert keyed on its presence now fires on every start; key it on `required` |
-| `masking_mode_invalid` | error | `ROSIE_MASKING_MODE` is neither `express` nor `strict` (read without letter case), or a security setting has an unreadable value (`ROSIE_REQUIRE_COLUMN_GRANTS`, `ROSIE_AUDIT_POLICY`, `DB_SSL`, ...; [OPERATIONS.md](OPERATIONS.md#settings-reference)); the HTTP server exits 1. The MCP servers exit 1 with the same message in `mcp_server_failed` or `mcp_http_failed` (1.32.0) |
+| `masking_mode_invalid` | error | `ROSIE_MASKING_MODE` is neither `express` nor `strict` (read without letter case); the HTTP server exits 1. Until 1.33.0 also any other unreadable setting, now `config_invalid`. The MCP servers exit 1 with the same message in `mcp_server_failed` or `mcp_http_failed` (1.32.0) |
+| `config_invalid` | error | A setting cannot be read one way: a yes-or-no value that is neither, a number outside its range or written with a unit (`10s`, `1e3`), an unknown value of a closed list (`ROSIE_RATE_LIMIT_STORE`, `LOG_LEVEL`, `DB_DIALECT`, `TRUST_PROXY`, ...; [OPERATIONS.md](OPERATIONS.md#settings-reference)). The message names each setting and what it accepts; the HTTP server exits 1 (1.33.0) |
+| `startup_failed` | error | The server cannot start: `reason` is `db_database_missing`, `context_dir_missing`, `context_dir_not_found`, `context_file_missing` (for example `system-prompt.txt`, which the wizard writes with the model), `context_value_invalid` (a `calendar` value the prompt cannot carry) or the code of what the engine refused to load. One line, exit 1, no stack trace (1.33.0) |
+| `setting_unknown` | warn | At startup: a `ROSIE_` name Rosie does not read, or an `AI_`/`DB_` name one typo away from a setting, with the closest one ("did you mean AI_MODEL?") (1.33.0) |
+| `setting_suspicious` | warn | At startup: a value that is accepted but probably not meant (`NODE_ENV=staging` read as development, an origin in `ROSIE_CORS_ORIGIN` with a path or trailing slash, an unknown `AI_REASONING_EFFORT`) (1.33.0) |
+| `context_key_unknown` | warn | At startup: keys or values in the context files that the engine ignores or cannot read, with the closest known key (`npm run check-context` lists all) (1.33.0) |
+| `assistant_disabled` | warn | At startup: `AI_ASSISTANT_ENABLED=false`, so the answering routes answer 404 and `/health` answers 503 (1.33.0) |
+| `model_key_unusable` | warn | At startup: `OPENAI_API_KEY` is unset, still the `.env.example` placeholder, or holds a space or a quote; every question is refused (1.33.0) |
+| `model_key_refused` | error | The model provider answered 401 or 403: "the model provider refused the key: check OPENAI_API_KEY / AI_BASE_URL". Logged once; not again until a model call succeeds or 10 minutes pass without a refusal. `/health` is `degraded` (200, `model_key_refused` in `refusing`) meanwhile, from the second refusal or 30 seconds after the first, never 503: it makes no model call to see the key recover. `/health` answers 503 meanwhile (1.33.0) |
+| `handle_secret_unset` | warn | At startup with `NODE_ENV=production`: `ROSIE_HANDLE_SECRET` is not set, so answer handles die at every restart and are refused by other replicas (1.33.0) |
+| `cors_origin_refused` | warn | A browser request from an origin not in `ROSIE_CORS_ORIGIN` was answered 403; once per origin per process, with the `origin` (1.33.0) |
 | `column_grants_hold` | error | The column-grant gate is on (strict mode by default, or `ROSIE_REQUIRE_COLUMN_GRANTS=true`) and a context became held (`code`, `mode`, `reasons`). Carries `security: true` (1.31.0) |
 | `column_grants_hold_released` | info | A held context passes the check again. Carries `security: true` (1.31.0) |
 | `column_grants_request_refused` | warn | Requests refused by the hold; at most one line a minute per context, `refused` is the count since the last. Carries `security: true` (1.31.0) |
@@ -151,6 +170,10 @@ message text. The masked-column check has no metric for its result; `/health` ca
 | `previous_answer_dropped` | info | A follow-up's previous statement no longer passes the validator, so the follow-up starts from nothing |
 | `metric_withheld_masked` | warn | Metrics left out of the prompt and of `list_metrics` because they read a masked column |
 | `masked_columns_duplicate_keys` | warn | The masks name one table under two keys that differ only by case. Both are applied; keep one |
+| `request_refused` | warn | A request turned away before it was read (1.33.0): `route`, `reason` (as in `rosie_refused_total`), `httpStatus`, `userId`, `correlationId`. One line per refusal |
+| `clarification_rule_unsafe_regex` | error | A rule of `clarification-rules.json` has a repeated group that repeats inside (`(a+)+`, `(\w+\s?)*`), which can take exponential time on a crafted question; the rule is skipped (1.33.0), and `npm run check-context` fails on it by id. Rewrite it with one level of repetition or a bound (`{0,5}`). Carries `rule`. This is a lint for the plain shapes, not a guarantee: nested groups (`((a+))+`), overlapping alternatives (`(a|a)*`), a counted repetition (`(a+){20}`) and similar still load and can be slow. The rules are written by the operator, with the same trust as the system prompt; test a new rule on a long question before putting it in service |
+| `error_response` | info | Every error response of the HTTP routes (1.33.0): `route`, `httpStatus`, `reference` (the 8 characters the user sees), `correlationId`, `code`. Search by the reference a user quotes |
+| `statement_refused` | warn | The validator or a row policy refused a statement the model sent to a query tool (1.33.0): `tool`, `reason` (`masked_column`, `table_not_allowed`, `column_not_allowed`, `function_not_allowed`, `not_a_select`, `parse_error`, `prohibited_pattern`, `row_policy`, `validation_failed`), `userId`, `errors`, and the request's `correlationId`. The tool's own `validation_failed` line has no correlation id; match this one. `statement_failed` (info) is the same for a database error |
 | `masked_name_in_context_text` | warn | Text in the context (prompt, descriptions, examples) writes a masked `table.column`, and that text is sent to the model as written |
 
 `masked_column_readable`, `column_grants_hold` and `db_permission_denied` are the ones to
@@ -168,5 +191,9 @@ letter case, with no masked column involved.
   run your own question bank with `npm run evaluate` ([EVALUATION.md](EVALUATION.md)) and
   work the review queue (`npm run review`). `npm run weekly-report` puts both next to the
   usage of the week on one page ([OPERATIONS.md](OPERATIONS.md)).
-- `GET /api/assistant/health` stays public and minimal. Use it for liveness, and the
-  metrics endpoint for everything else.
+- `GET /api/assistant/health` stays public and minimal. Since 1.33.0 it answers 503 with
+  `status: "unavailable"` and a `refusing` list while every question is refused (a security
+  or column-grant hold, the assistant switched off, the model key missing, the
+  audit policy blocking), so a load balancer and the Docker `HEALTHCHECK` see it. It is a
+  readiness check: do not restart a process on it, the cause is configuration, not the
+  process ([API.md](API.md#get-health-public)). Use the metrics endpoint for everything else.

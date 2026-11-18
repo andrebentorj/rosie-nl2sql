@@ -161,9 +161,12 @@ The widget may add thousands separators and trailing zeros to a number, and noth
 - **Too many digits for a float is text.** A value with a leading zero, an exponent or more
   than 15 significant digits, on either side of the decimal point, is left as the text it
   arrived as, and its column is not formatted. It still sorts by value.
-- Formatting is done on the decimal digits, never through a float, and numbers are written
-  the English way (`20,848.62`) whatever the browser's locale, like the model's sentence
-  beside them.
+- Formatting is done on the decimal digits, never through a float. Since 1.33.0 (widget
+  2026.11.17) the thousands separator and the decimal mark follow the widget's locale: the
+  `locale` attribute, else the browser's language, else English. `20848.62` reads `20,848.62`
+  in English and `20.848,62` in Portuguese; the digits never change. The model's sentence
+  beside them is the model's and may still write `20,848.62`. `locale="en"` keeps the English
+  way everywhere.
 - The name tests and the reading of the SQL are guesses, not knowledge of the data. They
   are built so that a wrong guess costs a separator and never a digit: a measure the widget
   does not recognise reads `12345` where `12,345` would be easier, and that is the side it
@@ -188,11 +191,46 @@ The widget may add thousands separators and trailing zeros to a number, and noth
   being read.
 - **A file that is part of the result says so** in a `Rosie note` row: the rows on screen of
   a larger answer, or a full export that stopped at the export limit.
-- The header row is escaped like the cells (quotes, commas, line breaks, and the apostrophe
-  in front of a cell that starts like a formula). The caveat rows too.
+- **Separator and encoding (since 1.33.0).** Every file starts with a UTF-8 byte order mark,
+  so Excel reads accents. Where the widget's locale writes decimals with a comma (Portuguese,
+  German, French, Spanish, Italian...), the cells are separated by `;` and a cell that is a
+  plain decimal number is written with a decimal comma (`20848,62`), which is what Excel
+  expects there; codes and text are untouched. Elsewhere the separator is `,` and the decimal
+  mark `.`, as before. A program that reads exported files from such a browser must accept `;`.
+- The header row is escaped like the cells (quotes, the separator, line breaks, and the
+  apostrophe in front of a cell that starts like a formula). The caveat rows too.
 - All three exports (selected rows, current view, full results) go through one function.
   `POST /export` returns the verdict the answer's handle was signed with (`verdict`), so a
   client that is not this widget can write the same rows.
+
+## Messages, waiting and the element's attributes
+
+- **Messages are written for the person asking**, never the browser's or the server's raw
+  text: "Cannot reach Rosie. Check your connection and try again." for a network failure,
+  "Your session has expired. Reload the page and ask again." for a 401, "You have asked as
+  many questions as this assistant allows for now." with the time to wait for a 429, "Many
+  people are asking right now." for a busy server, and so on. A sentence the server wrote for
+  a person (the safety filter, a question too long) is kept. When the error body carries a
+  `reference`, it is shown on its own line ("Reference: 3f2a9c10") to quote to whoever looks
+  after Rosie.
+- **A security hold** reads "Rosie is paused", with the server's plain message
+  (`securityMessage`), whom to tell (`supportContact` from `project.json`) and the code.
+- **A busy server** (`503` with `code: "E_BUSY"`) is asked again twice, after `retryAfter`
+  seconds and then twice that (at most 20 s each), with "Waiting for a free slot..." meanwhile.
+- **A refused question** (`blocked: true` on `/ask`) shows no thumbs and no "nothing was
+  checked" line.
+
+| Attribute or event | Default | What it does |
+|---|---|---|
+| `locale` | the browser's language, else `en` | BCP 47 tag (`pt-BR`, `en-GB`) for number separators and the CSV rule above; the words are English until the translations ship |
+| `timeout-seconds` | `130` | How long the widget waits for an answer before it stops the question (the server allows 120 s) |
+| `rosie:auth-expired` (event) | | Fired on the element on a `401`; bubbles and crosses the shadow root; `detail.path` is the route. A host page can refresh its token and ask again |
+
+Requests to the widget's own origin carry the header `X-Rosie-Widget-Version`; across
+origins the header is left out, because a server before 1.33.0 refuses it in the preflight.
+`/ask` always carries the version in its body (`widgetVersion`), so the server records which
+widget asked from any origin. Rosie's CORS layer allows the header since 1.33.0; a reverse
+proxy that answers CORS preflights itself must allow it too.
 
 ## Charts
 
