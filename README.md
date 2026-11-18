@@ -161,7 +161,7 @@ understood, and a passed check does not mean the answer is right
 | **Per-tenant isolation** | Row policies filter every query by the caller's verified identity (JWT). The filter is applied by the engine, not by the model, and cannot be talked around. |
 | **Approved queries** | A query a person reviewed for a question is run unchanged when the question comes back, with only the values swapped, and the answer says who approved it. The checks cover the calculation; this covers the meaning. |
 | **Metrics with one definition** | Declare "revenue" once, or import it from dbt or Cube. For a declared metric the engine writes the query itself, formula and joins, so it cannot be inflated by a join. A query the model writes on its own is compared with the definition when it adds the column up straight from tables; through a subquery that comparison stays silent and the fan-out checks speak. |
-| **Two ways in** | A chat widget (one script tag, white-label) and an MCP server for Claude, Cursor and other AI clients. The widget shows each step while the answer is prepared and draws the result as bars or lines, chosen from its shape. |
+| **Ways in** | A chat widget (one script tag, white-label), an MCP server for Claude, Cursor and other AI clients, and Slack and Microsoft Teams. The widget shows each step while the answer is prepared and draws the result as bars or lines, chosen from its shape. |
 | **Runs where your data is** | Your server, your database, your model key. Works with any OpenAI-compatible endpoint, including a model you host. |
 
 ## Measured, on public data
@@ -315,6 +315,11 @@ npm run mcp:config -- --install claude-desktop    # or writes it for you, with a
 Walkthrough: [docs/MCP_QUICKSTART.md](docs/MCP_QUICKSTART.md). Reference: [docs/MCP_SERVER.md](docs/MCP_SERVER.md).
 HTTP API: [docs/API.md](docs/API.md).
 
+**Slack and Microsoft Teams.** People ask in a channel or a direct chat, as themselves (the
+platform signs the person in, Rosie checks it), and get the same governed answer with its
+verdict first. When row policies make answers differ per person, a channel question is answered
+privately. Setup: [docs/SLACK.md](docs/SLACK.md), [docs/TEAMS.md](docs/TEAMS.md).
+
 ## How it works
 
 ```
@@ -358,7 +363,8 @@ directory. The contract is in [contexts/example/README.md](docs/CONTEXT_DIRECTOR
 | Isolate tenants or teams | [docs/ROW_POLICIES.md](docs/ROW_POLICIES.md) |
 | Declare metrics, or import them from dbt or Cube | [docs/METRICS.md](docs/METRICS.md) |
 | Have a person approve the query behind a recurring question | [docs/APPROVED_QUERIES.md](docs/APPROVED_QUERIES.md) |
-| Send an approved query's result on a schedule, by e-mail or signed webhook, with its checks | [docs/SCHEDULED_ANSWERS.md](docs/SCHEDULED_ANSWERS.md) |
+| Send an approved query's result on a schedule, by e-mail, signed webhook, Slack or Teams, with its checks | [docs/SCHEDULED_ANSWERS.md](docs/SCHEDULED_ANSWERS.md) |
+| Let people ask in Slack or Microsoft Teams, as themselves, with the verdict on every answer | [docs/SLACK.md](docs/SLACK.md), [docs/TEAMS.md](docs/TEAMS.md) |
 | Measure accuracy on my own questions, and catch regressions | [docs/EVALUATION.md](docs/EVALUATION.md) |
 | Monitor it with Prometheus and set alerts | [docs/MONITORING.md](docs/MONITORING.md) |
 | Know how much one process carries, measured on my database | [docs/CAPACITY.md](docs/CAPACITY.md) |

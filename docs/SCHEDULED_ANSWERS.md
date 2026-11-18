@@ -1,8 +1,8 @@
 # Scheduled answers
 
 A scheduled answer is an [approved query](APPROVED_QUERIES.md) that Rosie runs on a schedule
-and sends to people and systems: by e-mail, and to a webhook that Slack, Teams or an
-automation can consume. Every delivery carries the Answer Certificate of that run: its verdict,
+and sends to people and systems: by e-mail, to a Slack channel (1.37.0), and to a webhook that
+Teams or an automation can consume. Every delivery carries the Answer Certificate of that run: its verdict,
 what was checked and what was not. A run that the certificate contradicts or could not check
 is sent with that verdict first, never as a plain figure.
 
@@ -10,8 +10,9 @@ No language model is called for a scheduled run, at any point. The statement is 
 person approved, run unchanged.
 
 **Scheduled answers send data out of your installation.** The rows of the result leave in the
-e-mail (its text and a CSV file) and in the webhook body. Turn the feature on only where that
-flow is agreed, and read [COMPLIANCE.md](COMPLIANCE.md#outbound-data-scheduled-answers).
+e-mail (its text and a CSV file), in the Slack message and its CSV file, and in the webhook
+body. Turn the feature on only where that
+flow is agreed, and read [COMPLIANCE.md](COMPLIANCE.md#scheduled-answers-e-mail-and-webhooks).
 
 ## In five steps
 
@@ -84,7 +85,7 @@ flow is agreed, and read [COMPLIANCE.md](COMPLIANCE.md#outbound-data-scheduled-a
 | `runAs` | yes | The service identity it runs as: `name` and, when row policies apply, `claims` |
 | `definedBy` | yes | Who defined the schedule. Recorded with every run |
 | `definedOn` | no | `YYYY-MM-DD` |
-| `channels` | yes | One to ten channels: `email` (`to`: up to 50 addresses, optional `subject`) or `webhook` (`url`) |
+| `channels` | yes | One to ten channels: `email` (`to`: up to 50 addresses, optional `subject`), `webhook` (`url`), `slack` (`channel`: a channel ID) or `teams` (`conversation`: a channel, group chat or personal chat id) |
 | `enabled` | no | `false` keeps the schedule in the file without running it |
 
 Keys that start with `_` or `$` are comments. An unknown key is reported by `check-context`
@@ -303,8 +304,7 @@ def verify(secret: bytes, headers, raw_body: bytes) -> bool:
 
 Slack and Teams incoming webhooks do not check signatures and expect their own message shape;
 put a small relay (a function or an automation flow) between Rosie and them that verifies the
-signature and formats the message. Native Slack and Teams channels are planned for a later
-release.
+signature and formats the message, or use the native Slack and Teams channels below instead.
 
 #### Where the URL lives
 
@@ -321,6 +321,61 @@ is accepted, since you wrote it, but warned at startup, by `check-context` and b
 `ROSIE_SCHEDULE_WEBHOOK_HOSTS` is empty: set that list so the result can only go where you
 meant. Host names are not resolved for this warning.
 
+### Slack (1.37.0)
+
+```json
+{ "type": "slack", "channel": "C0123ABCD" }
+```
+
+Rosie's Slack app posts the result to that channel with its bot token
+(`ROSIE_SLACK_BOT_TOKEN`, [SLACK.md](SLACK.md)); `ROSIE_SLACK` itself need not be on. Use the
+channel's ID (in Slack: the channel's details, at the bottom), which does not change when the
+channel is renamed; `"slack:C0123ABCD"` is read the same. Invite Rosie to the channel first
+(`/invite @Rosie`): the app has no permission to post where it is not a member. When
+`ROSIE_SLACK_ALLOWED_CHANNELS` is set, the channel must be in it. **Everyone in the channel reads
+the post**, also when the context has row policies: the rows are those the schedule's service
+identity may see (its `runAs.claims`), not those of each reader (see "Who reads a channel post"
+below).
+
+The message has the approved Slack layout ([SLACK.md](SLACK.md#the-answer)): the verdict first
+in bold, in a colour bar of its tone, then the schedule's name and the time it was due, the
+first `ROSIE_SLACK_ROWS_INLINE` rows (10), a grey line with the approval, the service identity
+and who defined the schedule, then warnings, what was checked and everything that was not. No
+buttons. Its plain-text form (verdict line first) is the fallback for notifications. When the result has more rows, the CSV file (verdict rows on top) follows in the message's
+thread. If the file cannot be sent after the message was posted, a line in the thread says so
+and the delivery is not retried (a retry would post the message twice); the run record carries
+`file: false`.
+
+### Teams (1.37.0)
+
+With the Teams bot on (`ROSIE_TEAMS=true`, [TEAMS.md](TEAMS.md)), a schedule can post its result
+to a Teams conversation as the bot:
+
+```json
+{ "type": "teams", "conversation": "19:abc123...@thread.tacv2" }
+```
+
+`conversation` is a channel id (`19:...@thread.tacv2`), a group chat id (`19:...@thread.v2`) or
+a personal chat with the bot (`a:...`), or `"env:NAME"` to read it from the environment.
+TEAMS.md says where to find the id. The bot must be installed in that team or chat. The message
+is the approved card ([TEAMS.md](TEAMS.md#what-people-see)): the verdict band first, the
+schedule, the run and its approval, the first `ROSIE_TEAMS_MESSAGE_ROWS` rows, what was checked
+and what was not, and the statement; no buttons that act. Its plain text (verdict line first) is
+the fallback. It is posted to `ROSIE_TEAMS_SERVICE_URL` with the bot's app token. A channel not in
+`ROSIE_TEAMS_CHANNELS` is accepted and warned about: everyone in it reads the result. With the
+bot off or not configured the schedule has an environment problem and does not run. A 5xx or
+429 of the connector is retried like a webhook's; a 4xx (the bot was removed from the team) is
+not.
+
+### Who reads a channel post
+
+A Slack or Teams channel post is read by **everyone in that channel**, whatever the context's row
+policies say. Unlike a question asked in Slack or Teams, which is answered with the asking
+person's access (and sent to them privately when the context has row policies), a scheduled
+run has no reader to filter for: it runs as its service identity, and its `runAs.claims` decide
+which rows it carries. Post to a channel only a schedule whose claims cover nothing that some
+member of that channel may not see, or send it by e-mail to the people who may.
+
 ## Failures and retries
 
 | What happened | Retried | Final status |
@@ -333,6 +388,8 @@ meant. Host names are not resolved for this warning.
 | SMTP `5xx`, no recipient accepted, a login refused | no | |
 | Webhook `5xx`, `408`, `429`, a timeout | yes, that channel | |
 | Webhook other `4xx`, a redirect | no | |
+| Slack `429`, `5xx`, a timeout, `internal_error` | yes, that channel | |
+| Slack `not_in_channel`, `channel_not_found`, `invalid_auth`, `missing_scope` | no | |
 
 `ROSIE_SCHEDULE_MAX_ATTEMPTS` (4) attempts each, waiting `ROSIE_SCHEDULE_RETRY_BASE_MS`
 (60 seconds) before the first retry and twice as long before each next one. The run's status is
@@ -431,7 +488,8 @@ answer.
 
 ## What it does not do
 
-- **No native Slack or Teams channel yet.** Use the signed webhook and a relay.
+- **Slack and Teams are posted to as the app**: the channel or conversation must be one the app
+  is in, and everyone there reads the result.
 - **Parameter values are fixed.** A schedule cannot say "last week" as a parameter; write the
   period into the approved statement (relative to the current date) when it should move.
 - **One webhook secret** for every webhook of the installation.

@@ -1830,6 +1830,31 @@ the release starts refusing. Each note says whether the upgrade changes a grant 
    (`audit_schema_missing` in the log; the rows were in the audit file). Now every such row is
    written without the four columns, as the first one always was. Adding the columns (above)
    was and remains the fix.
+
+   **Upgrading to 1.37.0.** No grant, no table and no default is changed. Both chat platforms
+   are new and off by default, and while they are off nothing answers at their paths and no call
+   is made to Slack or Microsoft.
+
+   *Slack.* `ROSIE_SLACK`, [SLACK.md](SLACK.md): people ask Rosie in Slack, by mention, direct
+   message or `/rosie`, as themselves (their e-mail address, looked up in Slack by Rosie),
+   through the same gates, quota, row policies, certificate and audit as the widget, with
+   buttons (the statement, an explanation, a rating) that only the asker can use.
+
+   *Teams.* `ROSIE_TEAMS`, [TEAMS.md](TEAMS.md): the same in Microsoft Teams, in a personal chat
+   with the bot or in the channels you list, as the person Teams signs in (their user principal
+   name), with the answer as a card and the same buttons. The app package is made by
+   `npm run teams:manifest`.
+
+   In both, when the context has row policies, an answer asked in a channel goes only to the
+   person who asked by default (`ROSIE_SLACK_CHANNEL_ANSWERS`, `ROSIE_TEAMS_CHANNEL_ANSWERS`).
+   A question asked in Slack or Teams counts against the same per-person quota as the chat page.
+   Scheduled answers gain two channel types, `{ "type": "slack", "channel": "C..." }` (needs only
+   `ROSIE_SLACK_BOT_TOKEN`) and `{ "type": "teams", "conversation": "19:..." }` (needs the Teams
+   bot on). Things you may notice anyway: `npm run doctor` has "Slack" and "Teams bot" sections
+   when either is set (and `--online` to try their credentials), a `ROSIE_SLACK_*` or
+   `ROSIE_TEAMS_*` setting without its switch is named in a startup warning, and a
+   `scheduled-answers.json` channel of an unknown type is now reported as not "email",
+   "webhook", "slack" or "teams".
 4. **Restart every replica**, then run `npm run doctor`. A widget loaded from
    `/api/assistant/widget.js` follows the backend by itself; a copied one must be copied
    again (6b).
