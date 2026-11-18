@@ -168,7 +168,7 @@ which masking mode was chosen, what it means, and how to change it later
 | `--url <url>` | `mysql://...`, `postgres://...` or `mssql://...`. The scheme selects the engine. To keep the password out of your shell history, put the URL in the `DB_URL` environment variable instead. |
 | `--name <name>` | Project name. Default: the database name. |
 | `--masking express\|strict` | How masked columns are protected ([Choosing a masking mode](#choosing-a-masking-mode)); `--masking=strict` works too. Default `express`. Without it the wizard asks after it connects, offering the earlier choice on a re-run; with `--url` or `--yes` and no `--masking`, the mode is express. Any other value stops the wizard. Written to the `.env` as `ROSIE_MASKING_MODE`, with a two-line comment. |
-| `--create-ro-user` | Creates two accounts, each with a generated password written to the `.env` only. The engine account (`rosie_engine`, `DB_USER`) gets `SELECT` and `INSERT` on Rosie's four tables, plus `UPDATE` and `DELETE` on `rosie_rate_limit`, and nothing else; it is created only once those tables exist (with a separate engine database the wizard creates them; in your own database it needs `--create-engine-tables`, or it prints the statements). The account in `--url` is then never written to the `.env`. The read-only account `rosie_readonly`, a user that can only SELECT: In express mode it grants `SELECT` on the whole schema (PostgreSQL, SQL Server) or database (MySQL), plus what the engine needs to connect (`CONNECT` and `USAGE` on PostgreSQL). In strict mode it grants table by table, and on tables with masked columns only the unmasked columns, from the catalog and the masks (Step 2), and without a catalog it does not create the user. **Writes to your database**; needs an account allowed to create users. If it cannot, the statements to run are printed. On PostgreSQL and SQL Server the statements run in one transaction, so a failure leaves nothing behind; on MySQL they stop at the first failure, and the wizard says the account exists but is incomplete, lists what ran and what did not, and prints the `DROP USER` to clean up. Without this option no user is created. |
+| `--create-ro-user` | Creates two accounts, each with a generated password written to the `.env` only. The engine account (`rosie_engine`, `DB_USER`) gets `SELECT` and `INSERT` on Rosie's five tables, plus `UPDATE` and `DELETE` on `rosie_rate_limit` and `UPDATE` on `rosie_scheduled_run`, and nothing else; it is created only once those tables exist (with a separate engine database the wizard creates them; in your own database it needs `--create-engine-tables`, or it prints the statements). The account in `--url` is then never written to the `.env`. The read-only account `rosie_readonly`, a user that can only SELECT: In express mode it grants `SELECT` on the whole schema (PostgreSQL, SQL Server) or database (MySQL), plus what the engine needs to connect (`CONNECT` and `USAGE` on PostgreSQL). In strict mode it grants table by table, and on tables with masked columns only the unmasked columns, from the catalog and the masks (Step 2), and without a catalog it does not create the user. **Writes to your database**; needs an account allowed to create users. If it cannot, the statements to run are printed. On PostgreSQL and SQL Server the statements run in one transaction, so a failure leaves nothing behind; on MySQL they stop at the first failure, and the wizard says the account exists but is incomplete, lists what ran and what did not, and prints the `DROP USER` to clean up. Without this option no user is created. |
 | `--create-engine-tables` | Creates Rosie's four engine tables (`rosie_audit_log`, `rosie_answer_certificate`, `rosie_feedback`, `rosie_rate_limit`). **Writes to your database.** Without this option no table is created, except as below. |
 | `--engine-db <name>` | Where Rosie's own tables go. In express mode, a run without questions (`--url` or `--yes`) that has `--create-ro-user` or `--create-engine-tables` and no `--engine-db` puts them in a separate database, `rosie`: the wizard creates it on all three engines, creates the tables there (also with `--create-ro-user` alone) and writes `DB_ENGINE_DATABASE=rosie`. `--engine-db same` (or the business database's own name) keeps them next to your data, where the express account can read them. In strict mode they stay in your database unless you name one. The interactive interview asks, with `rosie` as the default; an earlier answer or `DB_ENGINE_DATABASE` is kept. The final report has one line on where they went. |
 | `--ro-user <name>`, `--engine-user <name>` | Names of the two accounts (defaults `rosie_readonly` and `rosie_engine`), for example for two projects on one server. |
@@ -1076,7 +1076,7 @@ The server does not issue `GRANT` or `REVOKE`. The check covers the read-only ac
 
 ## Step 3. Create the engine database, its tables and the main user
 
-Rosie writes its own records through the **main pool** (not the read-only one), into four
+Rosie writes its own records through the **main pool** (not the read-only one), into five
 tables:
 
 | Table | Holds |
@@ -1085,6 +1085,7 @@ tables:
 | `rosie_answer_certificate` | The certificate of each answer that carried one |
 | `rosie_feedback` | Ratings (up or down) |
 | `rosie_rate_limit` | Quota counters, used only with `ROSIE_RATE_LIMIT_STORE=database` |
+| `rosie_scheduled_run` | One row per scheduled answer run, and the lock that sends it once; used only with `ROSIE_SCHEDULES=true` (1.36.0) |
 
 Create a database for them, apply the schema file **inside that database**, and create the
 account of the main pool. `npm run init -- --create-ro-user` does all of this for you (the
@@ -1104,6 +1105,8 @@ GRANT SELECT, INSERT ON rosie.* TO 'rosie_app'@'%';
 -- Only with ROSIE_RATE_LIMIT_STORE=database: the shared counters are updated and old
 -- windows are removed.
 GRANT UPDATE, DELETE ON rosie.rosie_rate_limit TO 'rosie_app'@'%';
+-- Only with ROSIE_SCHEDULES=true: a scheduled run writes its outcome on its own row.
+GRANT UPDATE ON rosie.rosie_scheduled_run TO 'rosie_app'@'%';
 FLUSH PRIVILEGES;
 ```
 
@@ -1130,7 +1133,7 @@ another account by setting `DB_USER` and `DB_PASSWORD` in their environment.
 `DB_DATABASE`, next to the business data. Then a schema-wide grant (express mode, Step 2)
 lets the read-only user read them, and `npm run generate-catalog` lists them in the catalog
 like any other table. If you keep that layout, use strict mode (or grant the read-only user
-SELECT table by table instead of on `<my_schema>.*`), and remove the four `rosie_` tables
+SELECT table by table instead of on `<my_schema>.*`), and remove the five `rosie_` tables
 from `schema-catalog.json` after each generation. The separate database avoids both.
 
 ---
@@ -1800,6 +1803,33 @@ the release starts refusing. Each note says whether the upgrade changes a grant 
    `403` with code `E_CSRF` is shown with its own message. On a page of the API's own origin
    that carries `<meta name="rosie-csrf-token">`, the widget sends that token and ignores an
    `api-token` attribute; no embedding has that meta unless you add it.
+
+   **Upgrading to 1.36.0.** No default and no existing grant is changed. The schema file
+   creates one more table, `rosie_scheduled_run`; running it again (step 2) is enough, and it
+   is used only when scheduled answers are on.
+
+   *Scheduled answers.* New and off by default (`ROSIE_SCHEDULES`,
+   [SCHEDULED_ANSWERS.md](SCHEDULED_ANSWERS.md)): approved queries run on a schedule and
+   **send their results out** by e-mail (text and HTML, with a CSV file) and signed webhook,
+   with their verdict and checks. While it is off nothing runs and no outbound connection is
+   made. Only if you turn it on, give the engine account `UPDATE` on `rosie_scheduled_run`
+   (Step 3; the wizard's `--create-ro-user` does it on a re-run). Things you may notice anyway:
+   `/health` has a `scheduledAnswers` block (`{ "enabled": false }` while off), the admin
+   overview a `scheduledAnswers` field, and `npm run check-context` reads
+   `scheduled-answers.json` when the context has one.
+
+   *Second opinion.* New command: `npm run certify -- --sql <file.sql | folder>` puts the
+   Answer Certificate on SQL that came from another tool (a BI dashboard, a spreadsheet, an
+   analyst), one file or a folder, with exit codes by verdict for a pipeline
+   ([SECOND_OPINION.md](SECOND_OPINION.md)). It needs nothing turned on; `POST /certify` and
+   `certify_sql` stay off until `ROSIE_CERTIFY_SQL=true`, as before.
+
+   *Audit trail on a table without the 1.34.0 columns.* Before 1.36.0, several audit rows
+   written at the same moment to a `rosie_audit_log` that lacked the four 1.34.0 columns made
+   Rosie stop writing that table to the database for the life of the process
+   (`audit_schema_missing` in the log; the rows were in the audit file). Now every such row is
+   written without the four columns, as the first one always was. Adding the columns (above)
+   was and remains the fix.
 4. **Restart every replica**, then run `npm run doctor`. A widget loaded from
    `/api/assistant/widget.js` follows the backend by itself; a copied one must be copied
    again (6b).
@@ -1815,7 +1845,7 @@ To go back, deploy the previous tag.
 
 Stop Rosie first. With `--create-ro-user` the wizard created, on the database server, the
 read-only account, the engine account and (express default) the engine database `rosie` with
-Rosie's four tables in it. Its final report prints these statements with the names it used;
+Rosie's five tables in it. Its final report prints these statements with the names it used;
 the defaults are below. Run them as an administrator. Dropping the engine database deletes
 the audit trail and the feedback: export what you must keep first (`npm run audit-report`).
 
@@ -1850,8 +1880,9 @@ DROP LOGIN rosie_readonly;
 DROP LOGIN rosie_engine;
 ```
 
-If the tables are in your business database (`--engine-db same`), drop the four tables
-(`rosie_audit_log`, `rosie_answer_certificate`, `rosie_feedback`, `rosie_rate_limit`) instead of
+If the tables are in your business database (`--engine-db same`), drop the five tables
+(`rosie_audit_log`, `rosie_answer_certificate`, `rosie_feedback`, `rosie_rate_limit`,
+`rosie_scheduled_run`) instead of
 the database; on PostgreSQL also run `DROP OWNED BY rosie_engine` there, and on SQL Server
 `DROP USER rosie_engine` there. Then delete the context directory, the `.env` (and any
 `.env.rosie-init`), and with Docker the containers and the `rosie-logs` volume

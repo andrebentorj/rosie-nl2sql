@@ -42,6 +42,8 @@ own, recommended; [INSTALL.md](INSTALL.md), Step 3).
 | `rosie_answer_certificate` | Per answer: user id, question, SQL, the checks, and a few values: the totals of the second derivation and, when a filter value was not found, up to eight real values of that unmasked column. | Engine database | Same | Same |
 | `rosie_feedback` | Thumbs up or down, an optional free-text comment (500 characters), the question and SQL. | Engine database | Same | Same |
 | `rosie_rate_limit` | Only with `ROSIE_RATE_LIMIT_STORE=database`: a counter per client address (IPv6 by /56) and hour or day. | Engine database | Removed by the server about two windows later (two days at most) | Same |
+| `rosie_scheduled_run` | Only with `ROSIE_SCHEDULES=true` (1.36.0): one row per scheduled run: the schedule id, who defined it (a name from `scheduled-answers.json`), the service identity it ran as, the replica, status, attempts, a row count, the verdict, and per channel the number of recipients or the webhook host. No result rows, no e-mail address, no URL path. | Engine database | Until removed by hand (not covered by `npm run audit-prune` or `npm run retention` in this release) | Same |
+| Recipients of scheduled answers | Only with `ROSIE_SCHEDULES=true`: **the result rows**, in the e-mail body (first 20, as text and as an HTML table), its CSV file (all, up to 500) and the webhook body (all), with the statement and its certificate. See [Outbound data](#outbound-data-scheduled-answers). | The recipients' mailboxes and every mail server on the way; the webhook receiver and whatever it forwards to | Outside Rosie: the recipients' and their systems' retention | The recipients, and anyone they forward to |
 | Audit file (`ROSIE_AUDIT_FILE`) and your rotated copies | The same records as the three tables, plus: the whole question when longer than 500 characters, every statement the model tried for a question (`sql_trace`, refused ones marked), administration changes (the administrator's name or id and address), masking state changes, and the records of erasures, retention runs and exports. | The server's disk (a mounted volume in a container) | Until removed: `npm run audit-prune` removes old records from it too. Rotation is yours (logrotate or similar). | Whoever can read that file system. The server's own user can write it. |
 | `review-dismissed.json` | Message ids of reviewed answers and the name of the administrator who looked. | Next to the audit file | Until removed | Same as the audit file |
 | Process log (stdout) | Events with user ids and correlation ids. SQL text and database error text only at `LOG_LEVEL=debug`. | Wherever you ship stdout | Your log platform's retention | Your log platform's users |
@@ -49,7 +51,8 @@ own, recommended; [INSTALL.md](INSTALL.md), Step 3).
 | Results in the browser and CSV exports | What the answer returned. | The asker's browser and downloads | The widget keeps the conversation of the open tab only; files are the user's | The asker |
 | Files these commands write | `npm run subject -- --export` and `npm run audit-export` write personal data, readable by their owner only. | Where you run them | Until you delete them | You |
 
-Rosie never stores result rows. Backups of the engine database and of the audit file are
+Rosie never stores result rows. It does **send** them, when scheduled answers are on (the
+last row of the table above). Backups of the engine database and of the audit file are
 yours and follow your backup policy.
 
 ### What the trail can tell you about a person's data in answers
@@ -93,6 +96,38 @@ masks, prompt, approved queries; the same value `/metrics` shows as `rosie_conte
 carries both. Each change of the masking state is a `rosie_masking_state` record in the audit
 file. `npm run audit-export` writes the context digest and every file's SHA-256, so a row's
 version can be matched with the files that produced it.
+
+## Outbound data: scheduled answers
+
+Off by default. With `ROSIE_SCHEDULES=true` ([SCHEDULED_ANSWERS.md](SCHEDULED_ANSWERS.md)),
+Rosie runs approved queries on a schedule and **sends their results out of the installation**:
+by e-mail through your SMTP server, and to webhook URLs. This is a new data flow, separate from
+the model provider, and it carries the result rows themselves, not a description of them.
+
+- **What leaves:** the rows of the result (up to 500), the statement with its literal values,
+  the certificate, the name of the schedule, the approved question, who approved it and who
+  defined the schedule. Masked columns never leave: a statement that reads one is refused
+  before it runs, as for any question. Row policies apply for the schedule's service identity,
+  so a schedule sends only the rows its declared claims allow.
+- **To whom:** the addresses and URLs written in `scheduled-answers.json` (URLs may be read from
+  the environment). `ROSIE_SCHEDULE_EMAIL_DOMAINS` and `ROSIE_SCHEDULE_WEBHOOK_HOSTS` limit where
+  they may point; set them. `npm run check-context -- --base <previous>` flags every schedule
+  added or changed, with its recipients, for review before merge.
+- **Who decides:** whoever can change the context directory, as for masks and row policies.
+  Each schedule names who defined it (`definedBy`), and that name is recorded with every run.
+  The statement is always an approved query, so a person reviewed it.
+- **In transit:** SMTP with STARTTLS or TLS and a verified certificate (clear text only to a
+  relay on the same machine); webhooks over https, signed with HMAC-SHA256. TLS covers the hop
+  from Rosie to your SMTP server only; from there the message travels as your mail system sends
+  it, and it is not encrypted end to end.
+- **Once sent, it is out of reach.** An e-mail cannot be recalled, and erasure (`npm run
+  subject`) does not reach mailboxes, mail servers or webhook receivers. If a person's data can
+  appear in a scheduled result, include those recipients in your record of processing and in
+  your answer to a data subject request.
+- **Records:** every run is in the audit log (the answer, under `service:<name>`), the
+  certificate table, `rosie_scheduled_run` and the audit file (record kind
+  `rosie_scheduled_run`), with the outcome of each channel. The records name the number of
+  recipients and the webhook host, never an address or a URL path.
 
 ## Data subject requests
 
@@ -269,6 +304,9 @@ Stated plainly, so your assessment does not assume them:
 - **No TLS listener.** Rosie serves HTTP; TLS is your proxy's.
 - **No reach into backups, log platforms or the model provider** for erasure (listed above).
 - **No search for a person mentioned in other people's questions or results.**
+- **No recall of a scheduled answer.** What was sent by e-mail or webhook is outside Rosie
+  (see [Outbound data](#outbound-data-scheduled-answers)); `rosie_scheduled_run` is not pruned
+  by `npm run audit-prune` or `npm run retention` in this release.
 - **No record of processing activities, DPA template or consent management.** The data map
   above is the input for your own record.
 - **No activity screen.** Questions per person are answered with the trail (SQL, the evidence

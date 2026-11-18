@@ -251,7 +251,9 @@ goes back to the sign-in screen.
 - The ID token is verified by Rosie: signature against the provider's published keys
   (asymmetric algorithms only), issuer, audience, `azp` (whenever present, and required with
   several audiences),
-  expiry with 30 seconds of tolerance, nonce, and the tenant at Microsoft.
+  expiry with 30 seconds of tolerance, an issue time (`iat`) no later than now plus the same
+  30 seconds (since 1.36.0; before, a token dated in the future was accepted), nonce, and the
+  tenant at Microsoft.
 - The static `ROSIE_API_TOKEN` never reaches the browser; the page carries no `api-token`.
 - CSRF: the cookie is SameSite=Lax; an API call with it must come from the page's exact
   origin and carry `X-Rosie-CSRF` with a token bound to the session (the page puts it in
@@ -301,3 +303,10 @@ None of them exists while `ROSIE_CHAT_PAGE` is not true.
 - No user management screen: who may sign in is the provider plus the two allow-lists.
 - No refresh tokens, and no provider token stored or forwarded.
 - One project per page, as for the widget.
+- Over plain http (allowed only for localhost outside production), the cookies have no
+  `__Host-` prefix, so another page on that machine could plant a sign-in cookie; on https the
+  `__Host-` prefix binds them to the exact origin and prevents it.
+- The sealed sign-in cookie is valid for 10 minutes: if a provider accepted the same
+  authorization code twice, a callback replayed within that time with the same cookie could
+  complete a second time. Providers that follow the OAuth specification accept a code once,
+  and PKCE binds it to this browser's verifier.

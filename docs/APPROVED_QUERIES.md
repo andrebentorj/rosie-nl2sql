@@ -34,7 +34,7 @@ who approved it:
 | `question`, `sql` | yes | As for any verified query |
 | `approvedBy` | yes | Who reviewed it. Shown on the answer |
 | `approvedOn` | no | Date of the review, `YYYY-MM-DD`. Shown on the answer |
-| `reviewBy` | no | After this date the entry stops being approved and goes back to being an example |
+| `reviewBy` | no | `YYYY-MM-DD`. After this date the entry stops being approved and goes back to being an example. The date is compared with today in UTC, so the entry lapses at midnight UTC after it. A value that is not such a date (`19/11/2026`, `""`, a number) is refused and the entry is not approved: it would otherwise never lapse |
 | `params` | no | The values a caller may supply, each with a `type`: `string`, `integer`, `number` or `date` |
 
 Write parameters as `:name` in the SQL, outside quotes. Every `:name` must be declared and
@@ -80,7 +80,11 @@ At startup each entry is checked, and one that fails is used as a plain example 
 
 - no valid `id`, or an id used twice;
 - a parameter without a valid type, used and not declared, or declared and not used;
-- `reviewBy` in the past;
+- `reviewBy` written as anything but a date `YYYY-MM-DD` (since 1.36.0);
+- `reviewBy` in the past (compared in UTC). Since 1.36.0 the date is also read at every use, so a server that
+  stays up stops treating the entry as approved on the day after its review date, without a
+  restart or a reload: it is shown to the model as a plain example, `run_approved_query`
+  refuses its id, and a scheduled answer that runs it fails and sends nothing;
 - the statement no longer validates against the catalog (a dropped column, a renamed table):
   the entry is removed, as for any verified query.
 
@@ -110,6 +114,13 @@ context. No restart is needed: `docker kill --signal=HUP <container>`, or the re
 endpoint ([OPERATIONS.md](OPERATIONS.md)). The same approval can be made from the
 administration console, with `ROSIE_ADMIN_WRITE=true`: "Approve as a query" in its review
 view writes the entry and reloads the context by itself.
+
+## On a schedule
+
+An approved query can also run on a schedule, with fixed parameter values, as a named service
+identity, and be sent by e-mail or signed webhook with its certificate
+([SCHEDULED_ANSWERS.md](SCHEDULED_ANSWERS.md)). The schedule refers to the query by its `id`,
+so everything on this page holds for it: a suspended or expired approval is not sent.
 
 ## When the database changes under an approved query
 

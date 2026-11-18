@@ -196,10 +196,17 @@ It is a property tested on a family of statements, not a proof about all SQL; th
 read the database after the answer and not in the same snapshot; and it is about the
 calculation, not about whether the question was understood.
 
-**A certificate for SQL you did not get from Rosie.** With `ROSIE_CERTIFY_SQL=true`,
-`POST /certify` and the MCP tool `certify_sql` run a `SELECT` written by another assistant, a
-BI tool or a person, and return its result with the same certificate, with no model
-involved ([docs/API.md](docs/API.md)). Off by default.
+**A second opinion on numbers from other tools.** The SQL behind a figure in Metabase, Power
+BI (DirectQuery, or a dataset's source query), Looker, a spreadsheet or an analyst's query can
+be certified the same way, with no model involved: `npm run certify -- --sql revenue.sql` prints
+the verdict, each check, what was not checked and the evidence, and a folder of `.sql` files
+gives a report for auditing a dashboard's queries, with exit codes by verdict for a pipeline.
+It checks the structure of the statement and facts of the data; it does not tell whether the
+statement answers the business question, and it does not see what the tool computes after the
+SQL (a DAX measure, a table calculation). The validator, the masks and the row policies apply,
+so some dashboard SQL is refused, with the reason ([docs/SECOND_OPINION.md](docs/SECOND_OPINION.md)).
+Over the network the same runs through `POST /certify` and the MCP tool `certify_sql`, off by
+default (`ROSIE_CERTIFY_SQL=true`, [docs/API.md](docs/API.md)).
 
 **On a benchmark we did not write.** [BIRD Mini-Dev](docs/BIRD.md): 500 public questions over
 11 databases, PostgreSQL, context built from the schema alone. Accuracy follows the model
@@ -341,6 +348,7 @@ directory. The contract is in [contexts/example/README.md](docs/CONTEXT_DIRECTOR
 | See how accurate it is, and reproduce the numbers | [docs/BENCHMARK.md](docs/BENCHMARK.md) |
 | Choose a model, and see how much accuracy it buys | [docs/MODELS.md](docs/MODELS.md) |
 | Know exactly what the Answer Certificate checks | [docs/CERTIFICATE.md](docs/CERTIFICATE.md) |
+| Check the SQL behind a number from Metabase, Power BI, Looker or a spreadsheet | [docs/SECOND_OPINION.md](docs/SECOND_OPINION.md) |
 | See the result on the public BIRD benchmark | [docs/BIRD.md](docs/BIRD.md) |
 | Run it on PostgreSQL | [docs/POSTGRES.md](docs/POSTGRES.md) |
 | Run it on SQL Server | [docs/SQLSERVER.md](docs/SQLSERVER.md) |
@@ -350,6 +358,7 @@ directory. The contract is in [contexts/example/README.md](docs/CONTEXT_DIRECTOR
 | Isolate tenants or teams | [docs/ROW_POLICIES.md](docs/ROW_POLICIES.md) |
 | Declare metrics, or import them from dbt or Cube | [docs/METRICS.md](docs/METRICS.md) |
 | Have a person approve the query behind a recurring question | [docs/APPROVED_QUERIES.md](docs/APPROVED_QUERIES.md) |
+| Send an approved query's result on a schedule, by e-mail or signed webhook, with its checks | [docs/SCHEDULED_ANSWERS.md](docs/SCHEDULED_ANSWERS.md) |
 | Measure accuracy on my own questions, and catch regressions | [docs/EVALUATION.md](docs/EVALUATION.md) |
 | Monitor it with Prometheus and set alerts | [docs/MONITORING.md](docs/MONITORING.md) |
 | Know how much one process carries, measured on my database | [docs/CAPACITY.md](docs/CAPACITY.md) |

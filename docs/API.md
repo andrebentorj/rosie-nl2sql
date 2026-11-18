@@ -345,6 +345,11 @@ caller, the row cap, the read-only connection. A statement that fails any of tha
 `400` when `sql` is missing. Same credential, gates and quotas as `/ask`, counted on their
 own, and every request is audited like an answer.
 
+`npm run certify -- --sql <file.sql | folder> --url https://<host>` sends files to this route
+(credential in `ROSIE_CERTIFY_TOKEN`); without `--url` the same command certifies locally with
+the installation's own settings, and this route can stay off
+([SECOND_OPINION.md](SECOND_OPINION.md)).
+
 It answers 404 until `ROSIE_CERTIFY_SQL=true`. That is deliberate: everywhere else a caller
 asks in words and never hands the engine SQL. Turning it on does not widen what the
 validator allows. It changes who writes the statement, so a caller holding the API
@@ -465,9 +470,15 @@ answers `200 { "status": "alive" }` while the process serves HTTP.
       "reasons": [], "limits": [ "mysql_join_using_natural", "mysql_column_statistics" ],
       "checkedAt": "2026-11-17T09:00:00.000Z", "hold": false,
       "checkAgeMs": 412000, "stale": false, "holdReason": null }
-  ]
+  ],
+  "scheduledAnswers": { "enabled": false }
 }
 ```
+
+`scheduledAnswers` (1.36.0) is `{ "enabled": false }` unless `ROSIE_SCHEDULES=true`; then it
+holds counts only (`lock`, `schedules`, `invalid`, `failing`, `running`, `lastRunAt`,
+`lastFailureAt`), and a failing or invalid schedule makes `status` `degraded`, never a 503
+([SCHEDULED_ANSWERS.md](SCHEDULED_ANSWERS.md#watching-it)).
 
 `columnGrants` has one entry per context: whether the read-only account can read the
 context's masked columns, as checked at startup, every 15 minutes and after a context

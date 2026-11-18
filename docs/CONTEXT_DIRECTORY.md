@@ -13,6 +13,7 @@ rosie-context/
 ├── verified-queries.json    # optional. Examples for the model, and approved queries
 ├── clarification-rules.json # optional. Questions to ask back before the model is called
 ├── row-policies.json        # optional. Per-user or per-tenant row isolation
+├── scheduled-answers.json   # optional. Approved queries sent on a schedule (ROSIE_SCHEDULES)
 └── eval/
     ├── bank.json            # optional. The bank of `npm run evaluate`
     └── questions/           # optional. The bank of `npm run eval` (JSON files)
@@ -395,6 +396,13 @@ that table with `:claims.<name>` for values of the caller's verified identity:
 The engine rewrites every reference to the table into an already filtered derived table before
 the statement runs, and refuses the question when the identity lacks the claim. Full contract
 in `docs/ROW_POLICIES.md`.
+
+### `scheduled-answers.json` (optional, 1.36.0)
+Approved queries that run on a schedule and are sent by e-mail or signed webhook, with their
+certificate. Each schedule names an approved query by `id` (never SQL), a `cron` expression and
+its `timeZone`, the service identity it runs as (`runAs`: a name and the claims the row policies
+read), who defined it, and its channels. Read only while `ROSIE_SCHEDULES=true` on the server,
+and checked by `npm run check-context` either way. Full contract in `docs/SCHEDULED_ANSWERS.md`.
 
 ### `clarification-rules.json` (optional)
 Deterministic, context-driven clarification. Each rule matches the user's question by regex

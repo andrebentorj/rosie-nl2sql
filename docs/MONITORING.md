@@ -227,3 +227,46 @@ A sign-in of someone not allowed, repeated, is worth a look (`signin_not_allowed
 address); a burst of `signin_failed` with `id_token_invalid` or `discovery_failed` usually
 means the provider changed (a rotated client secret, an expired certificate) rather than an
 attack.
+
+## Scheduled answers (1.36.0)
+
+With `ROSIE_SCHEDULES=true` ([SCHEDULED_ANSWERS.md](SCHEDULED_ANSWERS.md)) a run that fails is
+retried with backoff, and what is left after the last attempt is visible in three places. There
+is no Prometheus metric for scheduled runs in this release.
+
+**`/health`** carries a `scheduledAnswers` block with counts only, never an id, a name or a
+recipient (the route is anonymous):
+
+```json
+"scheduledAnswers": { "enabled": true, "lock": "database", "schedules": 3, "invalid": 0, "failing": 1,
+                      "running": 0, "lastRunAt": "2026-11-23T13:00:04.000Z", "lastFailureAt": "2026-11-23T13:00:04.000Z" }
+```
+
+`failing` counts the schedules whose last run in this process ended `failed`, `held` or
+`partial`; `invalid` the schedules of `scheduled-answers.json` that do not run. Either makes
+`status` `degraded` (HTTP 200), never `unavailable`: questions are still answered, and a load
+balancer must not take the replica out for a mail server. `{ "enabled": false }` while off.
+Each replica reports its own runs; a run another replica made is in the run table, not in this
+replica's counts.
+
+**The admin overview** (`scheduledAnswers`): each schedule with its next run in its own time
+zone and its last outcome, the problems of the file, and the last 50 runs of every replica from
+`rosie_scheduled_run` (a run left `running` for an hour shows as `abandoned`).
+
+**The log:**
+
+| Event | Level | Meaning |
+|---|---|---|
+| `scheduled_run` | info, warn or error | A run ended: `scheduleId`, `runId`, `trigger` (`schedule` or `manual`), `status` (`delivered` info, `partial` warn, `failed` or `held` error), `attempts`, `rows`, `verdict`, `runAs`, `delivery` (each channel by count or host, with ok or failed), `error` |
+| `scheduled_run_retry` | warn | The run did not complete (a held gate, a database error) and is retried: `attempt`, `status`, `error` |
+| `scheduled_delivery_retry` | warn | One channel failed and is retried: `channel`, `attempt`, `error` |
+| `scheduled_run_claimed_elsewhere` | info | Another replica had already claimed this run. Normal with several replicas |
+| `scheduled_run_claim_unrecorded` | warn | The run's row could not be written; with `ROSIE_SCHEDULE_LOCK=database` the run waits and is given up rather than sent without it |
+| `scheduled_run_overlap` | warn | A run was due while the previous run of the same schedule was still retrying; it was skipped |
+| `scheduled_answer_invalid` | error | A schedule does not run: `scheduleId`, `kind` (`definition`: the file is wrong; `environment`: a setting is missing), and why. At startup and after every reload |
+| `scheduled_run_table_unreadable` | error or warn | At startup: `rosie_scheduled_run` cannot be read. With the database lock no run is made until it exists |
+| `scheduled_answers_loaded` | info | At startup and after every reload: `schedules`, `invalid`, `lock` |
+
+Page on `scheduled_run` at level error and on `/health` `scheduledAnswers.failing` above 0: a
+report that was due and not delivered. A `held` run with a security-hold reason is the same
+cause as a `column_grants_hold` or a failed privilege check, and is fixed there.
