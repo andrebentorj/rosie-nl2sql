@@ -173,25 +173,47 @@ Self-hosted endpoints have not been part of the automated test suite of this rep
 
 | Store | What it holds | Where |
 |---|---|---|
-| `rosie_audit_log` | One row per question: user id, question, generated SQL, outcome, timings. | The engine database (`DB_ENGINE_DATABASE`). |
+| `rosie_audit_log` | One row per question: user id, question, generated SQL, outcome, timings. Since 1.34.0 also the context version and masking state in force, the catalog columns the answer returned (`columns_returned`) and whether one is marked `"personal": true` (`personal_data`); and rows with status `maintenance` for erasures, retention runs and evidence exports, which name no person. | The engine database (`DB_ENGINE_DATABASE`). |
 | `rosie_answer_certificate` | The certificate of each answer that carried one. | Same. |
 | `rosie_feedback` | Thumbs up or down, with the question and SQL. | Same. |
 | `rosie_rate_limit` | Only with `ROSIE_RATE_LIMIT_STORE=database`: one counter per client address and window. Removed by the engine about two windows later (two days for the daily quota). | Same. |
-| Audit file | The same audit records as newline-delimited JSON, as a fallback when the database is down. Since 1.30.0 it also lists the statements the model ran for a question with `execute_query`, refused ones included, up to 20 (`sql_trace`), with their literal values. Since 1.33.0 each entry is an object: `sql` (the statement), `outcome` (`ran`, `refused` or `failed`), `reason` (why it was refused or failed, a code such as `masked_column`) and `rows`; a record with a refused statement also carries `rejection_reason` `statement_refused:<codes>`. | `ROSIE_AUDIT_FILE` (default `logs/`). |
+| Audit file | The same audit records as newline-delimited JSON, as a fallback when the database is down. Since 1.30.0 it also lists the statements the model ran for a question with `execute_query`, refused ones included, up to 20 (`sql_trace`), with their literal values. Since 1.33.0 each entry is an object: `sql` (the statement), `outcome` (`ran`, `refused` or `failed`), `reason` (why it was refused or failed, a code such as `masked_column`) and `rows`; a record with a refused statement also carries `rejection_reason` `statement_refused:<codes>`. Since 1.34.0 it also holds `rosie_masking_state` records (each change of the masking state: mode, state, counts, no column names) and `rosie_maintenance` records. | `ROSIE_AUDIT_FILE` (default `logs/`). |
 | Process log (stdout) | Events of each request. SQL text and database error text only at `LOG_LEVEL=debug` (up to 1.29.2 database error text was logged at error level, and it can quote a stored value). | Wherever you ship stdout. |
 
-Result rows are not stored by Rosie. The certificate of an answer is, and it holds figures and a few values: the totals of the second derivation, and where a filter value was not found, up to eight real values of that (unmasked) column. Retention of these tables is yours to set, and nothing
-is removed unless you schedule it:
+Result rows are not stored by Rosie. The certificate of an answer is, and it holds figures and a few values: the totals of the second derivation, and where a filter value was not found, up to eight real values of that (unmasked) column. Retention is yours to set, and nothing
+is removed unless you schedule it. Since 1.34.0 the period is a setting,
+`ROSIE_AUDIT_RETENTION_DAYS` (0, the default: keep everything), applied by a command you
+schedule with an administrator connection:
 
 ```bash
-npm run retention -- --days 365               # report: how many records are older
-npm run retention -- --days 365 --confirm     # remove them from the three log tables
+npm run audit-prune                                              # report: how many records are older
+npm run audit-prune -- --confirm --admin-url <administrator URL> # remove them, and record the run
 ```
 
-The command touches only `rosie_audit_log`, `rosie_answer_certificate` and `rosie_feedback`,
-and the account that runs it needs DELETE on them (`docs/INSTALL.md`, Step 3). The audit file is not rotated by Rosie; use
-your log tooling for it.
+It removes the old records from `rosie_audit_log`, `rosie_answer_certificate` and
+`rosie_feedback` and from the audit file and its rotated copies, and keeps the records of
+erasures, retention runs and exports, and the masking state records (unless
+`--include-masking-states`). Removing records is meant to need another account than the
+server's: set up as INSTALL Step 3 describes, the engine account holds `SELECT` and `INSERT`
+only (plus `UPDATE` and `DELETE` on `rosie_rate_limit` with the database rate-limit store;
+`npm run doctor` shows its privileges), which is why the command takes an administrator URL; see
+[COMPLIANCE.md](COMPLIANCE.md#retention). `npm run retention -- --days N --confirm`, from
+earlier versions, still removes table rows only, without a record, with an account that has
+DELETE on them. The audit file is not rotated by Rosie; use your log tooling for that.
+
+**One person's records.** `npm run subject -- --user <id>` counts, exports (`--export`) or
+erases (`--erase --delete` removes; `--erase` alone pseudonymises) every record attributed to
+that user id, in the tables and the audit file; it needs an administrator URL and is recorded
+without the person ([COMPLIANCE.md](COMPLIANCE.md#data-subject-requests)). Pseudonymising is
+not full erasure: the statements keep their other literal values, the certificates their
+values, and the records their ids and one shared pseudonym, which can still be personal data.
+For an erasure request, use `--delete`.
 
 A mask applies from the reload on. Records already written keep the question, statement and
-certificate they had; Rosie does not rewrite its trail. To remove them, use
-`npm run retention` or your own procedure.
+certificate they had; the server does not rewrite its trail. To remove them, use
+`npm run audit-prune`, `npm run subject -- --erase` or your own procedure.
+
+**Marking personal columns that are not masked.** A column with `"personal": true` in the
+catalog is sent and returned exactly as before; the flag changes nothing that leaves your
+environment, and only `describe_table` shows it (to the model, as `true`). What it changes is
+the audit row of each answer, which then says whether that answer returned personal data.

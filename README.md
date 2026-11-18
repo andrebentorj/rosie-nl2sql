@@ -128,9 +128,9 @@ values only with `--samples` ([docs/DATA_PRIVACY.md](docs/DATA_PRIVACY.md)).
 | Approach | What it does about a number that is wrong without an error |
 |---|---|
 | A model and a prompt | Nothing after the SQL runs. The answer looks the same right or wrong. |
-| An assistant that has a model look again (Databricks Genie "Inspect", ThoughtSpot "Double check response", and others) | A second pass by a model reviews the statement, sometimes with small queries of its own, and rewrites it. What it found is not shown as evidence, and a model reviewing a model can share its misreading. |
-| A badge for an approved answer (Snowflake verified queries, Genie trusted assets, Power BI verified answers) | Says a person approved that SQL beforehand. It says nothing about a question nobody approved. |
-| A semantic layer (dbt Semantic Layer, Cube, Looker and similar) | Prevents it by construction for what has been modeled: a metric defined once cannot be inflated by a join, and an entity can be declared apart from the key of its table. The model has to exist first (some tools now draft it from query history), and a question outside it is answered without the guarantee or not at all. |
+| An assistant that has a model look again (Databricks Genie ["Inspect"](https://docs.databricks.com/aws/en/genie-agents/concepts#improve-response-accuracy-using-inspect), ThoughtSpot "Double check response", and others) | A second pass by a model reviews the statement, writes smaller queries to verify parts of it, and returns the query it judges answers best. It is a model judging a model's query, so it can share its misreading; it is not a fixed check. |
+| A badge for an approved answer (Snowflake verified queries, Genie trusted assets, Power BI verified answers, the verified models Metabase's Metabot uses) | Says a person approved that SQL beforehand. It says nothing about a question nobody approved. [Metabase AI](https://www.metabase.com/features/metabase-ai) (read 2026-11-18) also links every answer to the underlying query and shows which models and metrics were used, to open and edit: that is traceability, not a check after the query runs. |
+| A semantic layer (dbt Semantic Layer, Cube, Looker, Metabase metrics with Metabot limited to curated content, and similar) | Prevents it by construction for what has been modeled: a metric defined once cannot be inflated by a join, and an entity can be declared apart from the key of its table. The model has to exist first (some tools now draft it from query history), and a question outside it is answered without the guarantee or not at all. |
 | A checker of SQL text (Sqlsure, veriSQL, open source) | Deterministic rules over the statement before it runs, against cardinalities you declare, with a "cannot verify" outcome. It does not ask the data. |
 | Rosie | Starts from the schema, with no modeling. After the statement runs, deterministic checks ask the data (the figure taken again with each record once, the filter value that does not exist, the period past the last record, the zeros inside an average) and the answer shows what they found and lists what nobody looked at. For a metric you do declare, it writes the query itself, as a semantic layer does, and it imports definitions from dbt and Cube. |
 
@@ -142,7 +142,7 @@ only where you declare a metric or approve a query, and its checks do not see th
 Rosie is not the only tool that deals with inflated totals, that looks at an answer again, or
 that checks SQL with fixed rules: the table names others that do each. What we did not find
 in any product a company can buy or host (checked on 2026-11-15, from each vendor's own
-documentation) is the three together: checks that are deterministic and run against the
+documentation; Metabase's Metabot pages read on 2026-11-18) is the three together: checks that are deterministic and run against the
 data after the statement, shown with their evidence on each answer; a stated list of what
 was not established; and how often answers were right under each verdict, published with
 every measurement. Semantic layers handle double counting more broadly than Rosie does, for

@@ -164,7 +164,7 @@ The widget may add thousands separators and trailing zeros to a number, and noth
 - Formatting is done on the decimal digits, never through a float. Since 1.33.0 (widget
   2026.11.17) the thousands separator and the decimal mark follow the widget's locale: the
   `locale` attribute, else the browser's language, else English. `20848.62` reads `20,848.62`
-  in English and `20.848,62` in Portuguese; the digits never change. The model's sentence
+  in English and `20.848,62` in German; the digits never change. The model's sentence
   beside them is the model's and may still write `20,848.62`. `locale="en"` keeps the English
   way everywhere.
 - The name tests and the reading of the SQL are guesses, not knowledge of the data. They
@@ -192,8 +192,8 @@ The widget may add thousands separators and trailing zeros to a number, and noth
 - **A file that is part of the result says so** in a `Rosie note` row: the rows on screen of
   a larger answer, or a full export that stopped at the export limit.
 - **Separator and encoding (since 1.33.0).** Every file starts with a UTF-8 byte order mark,
-  so Excel reads accents. Where the widget's locale writes decimals with a comma (Portuguese,
-  German, French, Spanish, Italian...), the cells are separated by `;` and a cell that is a
+  so Excel reads accents. Where the widget's locale writes decimals with a comma (German,
+  French, Spanish, Italian...), the cells are separated by `;` and a cell that is a
   plain decimal number is written with a decimal comma (`20848,62`), which is what Excel
   expects there; codes and text are untouched. Elsewhere the separator is `,` and the decimal
   mark `.`, as before. A program that reads exported files from such a browser must accept `;`.
@@ -222,7 +222,7 @@ The widget may add thousands separators and trailing zeros to a number, and noth
 
 | Attribute or event | Default | What it does |
 |---|---|---|
-| `locale` | the browser's language, else `en` | BCP 47 tag (`pt-BR`, `en-GB`) for number separators and the CSV rule above; the words are English until the translations ship |
+| `locale` | the browser's language, else `en` | BCP 47 tag (`en-GB`, `de-DE`) for number separators and the CSV rule above; the words are always English |
 | `timeout-seconds` | `130` | How long the widget waits for an answer before it stops the question (the server allows 120 s) |
 | `rosie:auth-expired` (event) | | Fired on the element on a `401`; bubbles and crosses the shadow root; `detail.path` is the route. A host page can refresh its token and ask again |
 

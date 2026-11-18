@@ -29,7 +29,8 @@ From the repository root:
 npm run test:mcp
 ```
 
-Expect a last line reading `ALL ... MCP CASES PASS`. This drives the real server the same way Claude Desktop
+It reads your `.env` and the database, and writes its audit rows to a temporary file, never to
+Rosie's engine tables. Expect a last line reading `ALL ... MCP CASES PASS`. This drives the real server the same way Claude Desktop
 will, so if it passes, the problem in any later step is configuration, not the server.
 
 ## Step 2. Find your node binary

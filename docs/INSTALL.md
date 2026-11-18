@@ -21,6 +21,17 @@ Host app (Angular/React)                Rosie backend (Node, 1 instance per proj
 
 ---
 
+## Two ways to install
+
+| | You need | Start at |
+|---|---|---|
+| **Docker** (recommended for a server) | Docker with Compose 2.24+, the Rosie image, an admin database URL, a model key | [`deploy/README.md`](../deploy/README.md): a check, the wizard and the service, all from the image, in five commands. No Node.js on the host. |
+| **Node.js** (a checkout) | Node.js 22+, the repository, an admin database URL, a model key | [Express install](#express-install), below |
+
+Both run the same setup wizard and the same checks. Before either, `npm run preflight -- --url
+<admin url>` (in Docker: `docker compose run --rm preflight`) says whether the machine, the
+database account and the model settings are ready, and changes nothing.
+
 ## Express install
 
 For evaluations, quick pilots and smaller companies that can let Rosie's read-only account
@@ -34,8 +45,18 @@ npm ci
 export OPENAI_API_KEY=sk-...
 ```
 
-1. **Have the database running.** Start its container if it runs in one, or use the URL of
-   the database you already have.
+1. **Have the database running, and check it.** Start its container if it runs in one, or
+   use the URL of the database you already have. Then:
+
+   ```bash
+   npm run preflight -- --url postgres://user:password@host:5432/dbname
+   ```
+
+   It changes nothing. It checks Node.js, that the database host answers and the account
+   logs in, that the account may create users and a database (the next step needs both),
+   the shape of the model key and base URL, the disk space for logs and that port 3001 is
+   free. Each failed line prints its fix; `--call-model` adds one tiny model call (a
+   fraction of a cent). `npm run preflight -- --help` lists the options.
 2. **Run the setup wizard and accept the defaults.**
 
    ```bash
@@ -235,20 +256,28 @@ problem. `npm run mcp:config` prints the MCP client configuration again.
 
 ### With Docker, without cloning
 
-`<image>` below is the image you were given access to, for example
-`ghcr.io/andrebentorj/rosie:<version>`. Log in to the registry first with the token you
-created (`docker login ghcr.io`), or load the file you received
+The kit in `deploy/` is the documented Docker path: [`deploy/README.md`](../deploy/README.md)
+runs the preflight check and the wizard in one-off containers, then the service with Docker
+Compose (a logs volume, a healthcheck, a restart policy, resource limits, a read-only file
+system, and an optional Caddy proxy with automatic HTTPS). Use it unless you have your own
+orchestration.
+
+The same steps with plain `docker run`, for reference. `<image>` is the image you were given
+access to, for example `ghcr.io/andrebentorj/rosie:<version>`. Log in to the registry first
+with the token you created (`docker login ghcr.io`), or load the file you received
 (`docker load < rosie-<version>.tar.gz`).
 
 ```bash
 mkdir -p rosie-context rosie-env
+export DB_URL='postgres://user:password@host:5432/dbname' OPENAI_API_KEY=sk-...
+docker run --rm -e DB_URL -e OPENAI_API_KEY <image> node scripts/preflight.js
 docker run --rm -v "$PWD/rosie-context:/context" -v "$PWD/rosie-env:/out" \
-  -e OPENAI_API_KEY -e DB_URL='postgres://user:password@host:5432/dbname' \
+  -e OPENAI_API_KEY -e DB_URL \
   <image> node scripts/rosie-init.js --context /context --env-dir /out --name "My Project" \
   --create-ro-user --create-engine-tables
 
-docker run -d -p 3001:3001 --env-file rosie-env/.env -v "$PWD/rosie-context:/context:ro" \
-  -v rosie-logs:/app/logs <image>
+docker run -d -p 127.0.0.1:3001:3001 --env-file rosie-env/.env -v "$PWD/rosie-context:/context:ro" \
+  -v rosie-logs:/app/logs --restart unless-stopped <image>
 ```
 
 **Keep the `rosie-logs` volume.** `/app/logs` holds the audit file, the copy of every
@@ -258,17 +287,17 @@ container and is thrown away when the container is replaced, for example on ever
 
 Inside the container `127.0.0.1` is the container itself: for a database on the same machine
 use `host.docker.internal` (Docker Desktop; on Linux add `--add-host=host.docker.internal:host-gateway`)
-in the URL. Without `--create-ro-user` the server runs its questions on the account in the
-URL, which the permission check refuses: every question is answered 503 until a read-only
-account is set.
+in the URL; preflight says so when it sees `localhost`. Without `--create-ro-user` the server
+runs its questions on the account in the URL, which the permission check refuses: every
+question is answered 503 until a read-only account is set, and the container reports
+`unhealthy`.
 
-The two directories must be writable by the container's user (uid 1000). The context lands
-in `./rosie-context` and the configuration in `./rosie-env/.env`, already pointing at
-`/context`. The image does not carry `test/`, so the wizard skips the dry run of
-`eval/questions/` there and `npm run eval` is not available; `npm run evaluate` is. With the
-context mounted read-only, set `ROSIE_EVAL_DIR` to a writable directory for its results. Run
-the server with that directory mounted and the variables from the generated env file (see
-the comment at the top of the `Dockerfile`).
+The two directories must be writable by the container's user (uid 1000; on Linux
+`sudo chown 1000:1000 rosie-context rosie-env`). The context lands in `./rosie-context` and
+the configuration in `./rosie-env/.env`, already pointing at `/context`. The image does not
+carry `test/`, so the wizard skips the dry run of `eval/questions/` there and `npm run eval`
+is not available; `npm run evaluate` is. With the context mounted read-only, set
+`ROSIE_EVAL_DIR` to a writable directory for its results.
 
 ---
 
@@ -1307,7 +1336,7 @@ Every backend deploy now carries its widget fixes to every host automatically; n
 re-copy, nothing to forget. `/project-info` reports `widgetVersion`, and an embedded copy
 that drifts from it logs a console warning.
 
-Two optional attributes (since 1.33.0): `locale` (`locale="pt-BR"`: number separators and
+Two optional attributes (since 1.33.0): `locale` (`locale="de-DE"`: number separators and
 the CSV separator follow it; default the browser's language) and `timeout-seconds` (how long
 the widget waits for an answer, default 130). On a `401` the element fires
 `rosie:auth-expired`, which a host page with expiring tokens can listen to:
@@ -1453,11 +1482,12 @@ the release starts refusing. Each note says whether the upgrade changes a grant 
    context directory and the `.env` are outside both and are not touched.
 2. **Run the schema file of your engine again** on the engine database (`db/schema.sql`,
    `db/schema.postgres.sql` or `db/schema.mssql.sql`). It creates only what is missing, so
-   it is safe on every upgrade. It adds tables, never columns. One column was added after
-   the first installations: `cross_check` on `rosie_answer_certificate`, written whenever
-   the second derivation runs (on by default). An installation older than that column needs
-   it once: `ALTER TABLE rosie_answer_certificate ADD COLUMN cross_check TEXT NULL;` (on SQL
-   Server: `ADD cross_check NVARCHAR(MAX) NULL`).
+   it is safe on every upgrade. It adds tables, never columns. Columns added after the first
+   installations: `cross_check` on `rosie_answer_certificate`, written whenever the second
+   derivation runs (on by default). An installation older than that column needs it once:
+   `ALTER TABLE rosie_answer_certificate ADD COLUMN cross_check TEXT NULL;` (on SQL Server:
+   `ADD cross_check NVARCHAR(MAX) NULL`). And four columns on `rosie_audit_log` in 1.34.0
+   (see "Upgrading to 1.34.0" below).
 3. **Check the grants** when the release adds a table (Step 3). 1.10.0 added
    `rosie_rate_limit`.
 
@@ -1692,7 +1722,7 @@ the release starts refusing. Each note says whether the upgrade changes a grant 
      attribute changes it. A busy server (503 `E_BUSY`) is asked again twice, about 15
      seconds in all, before the message.
    - **Numbers follow the browser's locale** in the card and the table (`20.848,62` in
-     Portuguese, with English words until the translations arrive). `locale="en"` on the
+     German; the words stay English). `locale="en"` on the
      element keeps the old look.
    - **CSV files** start with a UTF-8 BOM, and in a locale whose decimal mark is a comma they
      use `;` between cells and a decimal comma, which is what Excel there expects. A script
@@ -1702,6 +1732,49 @@ the release starts refusing. Each note says whether the upgrade changes a grant 
      ` rosie-widget/<version>`. A reverse proxy that answers CORS preflights itself must allow
      the header (Rosie's own CORS layer allows it).
    - A refused question (`blocked: true`) shows no thumbs and no "nothing was checked" line.
+
+   **Upgrading to 1.34.0.** No grant and no default is changed. One table gains columns
+   (below); everything else is new and optional.
+
+   *Audit columns (compliance pack).* Four
+   columns are added to `rosie_audit_log`: `context_version`, `masking_state`,
+   `columns_returned` and `personal_data` ([COMPLIANCE.md](COMPLIANCE.md)). Until you add them,
+   Rosie keeps recording without them: the first row logs `audit_columns_missing` once, the
+   values go to the audit file only, and `/health`'s audit block lists the table under
+   `columnsMissing`. Add them with an administrator account on the engine database:
+
+   ```sql
+   -- MySQL
+   ALTER TABLE rosie_audit_log ADD COLUMN context_version VARCHAR(32) NULL, ADD COLUMN masking_state VARCHAR(64) NULL, ADD COLUMN columns_returned TEXT NULL, ADD COLUMN personal_data TINYINT(1) NULL;
+   -- PostgreSQL
+   ALTER TABLE rosie_audit_log ADD COLUMN IF NOT EXISTS context_version VARCHAR(32) NULL, ADD COLUMN IF NOT EXISTS masking_state VARCHAR(64) NULL, ADD COLUMN IF NOT EXISTS columns_returned TEXT NULL, ADD COLUMN IF NOT EXISTS personal_data SMALLINT NULL;
+   -- SQL Server
+   ALTER TABLE rosie_audit_log ADD context_version NVARCHAR(32) NULL, masking_state NVARCHAR(64) NULL, columns_returned NVARCHAR(MAX) NULL, personal_data SMALLINT NULL;
+   ```
+
+   What else you may notice: the audit file gains `rosie_masking_state` records (one per
+   change of the masking state) and, once you use them, `rosie_maintenance` records;
+   `rosie_audit_log` gains rows with status `maintenance` (erasures, retention runs, evidence
+   exports), which `npm run weekly-report` does not count as questions. The certificate's
+   `provenance` carries `contextVersion` and `maskingState`. `describe_table` shows a column's
+   `"personal": true`, and `npm run check-context` warns about columns whose names look
+   personal and that are neither masked nor marked. New commands: `npm run subject`,
+   `npm run audit-export`, `npm run audit-verify`, `npm run audit-prune`, and the setting
+   `ROSIE_AUDIT_RETENTION_DAYS` (default 0: keep everything). On SQL Server an engine table
+   or column that is missing is now recognised as such (the driver reports it as a group of
+   errors); before, those rows were retried until the queue dropped them.
+
+   *Deployment.* New: `npm run preflight` (in the image `node scripts/preflight.js`), a check
+   before an install that changes nothing, and the Docker Compose kit in `deploy/`
+   ([deploy/README.md](../deploy/README.md)). An installation started with plain
+   `docker run` can move to the kit: put its context directory in `deploy/context`, its
+   `.env` in `deploy/config/.env`, and keep the audit files (the kit's volume is named
+   `rosie_rosie-logs`: copy the old volume's files into it). Inside the image the wizard's
+   report, `npm run mcp:config` and `npm run doctor` print host commands for the kit
+   (`ROSIE_IN_CONTAINER`, set by the image), and doctor says where the settings came from.
+
+   *Widget (2026.11.18).* The string table is English only (the empty second table is
+   gone); numbers and CSV files still follow the locale, so nothing on screen changes.
 4. **Restart every replica**, then run `npm run doctor`. A widget loaded from
    `/api/assistant/widget.js` follows the backend by itself; a copied one must be copied
    again (6b).

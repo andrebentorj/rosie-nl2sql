@@ -122,12 +122,26 @@ and no licence check.
 | Can a caller send SQL? | Not by default: a caller asks in words, or names a declared metric or an approved query. With `ROSIE_CERTIFY_SQL=true`, `POST /certify` and the MCP tool `certify_sql` accept a `SELECT` written by the caller and return it with a certificate. It passes the same validator (read-only, catalog allowlist, masked columns), the caller's row policies, the row cap and the read-only connection, and is audited. What it changes is who chooses the statement |
 | Can the trail lose a record? | Under the conditions listed here, yes, and each one is reported. Each record is written to a local append-only file first, with a synchronous write that completes before the answer is sent, then to the database, with retries. When that file write succeeds, a crash of the server loses nothing, and with `ROSIE_AUDIT_FSYNC=true` neither does a crash of the host. The file survives a replaced container only when its directory is a mounted volume, which the installation steps do and `npm run doctor` checks. It survives log rotation: the file is opened again at its path when it was renamed or removed. A record is lost only if the file write fails (a full disk) **and** the process dies before the database insert completes; the failed write is counted on `/health` from that moment. A row the database refuses for what it holds is not retried and is counted (`rejectedRows`); the file has it. The table keeps 500 characters of a question, the file keeps all of it. An administrative change is refused unless its attempt was first written to the file. `GET /health` and the `rosie_audit_sink_healthy` metric report a failing sink. With `ROSIE_AUDIT_POLICY=fail-closed`, Rosie refuses to answer while nothing can record |
 | Are result rows stored? | No |
-| Retention? | You set it. `npm run retention -- --days 365` reports what is older than the period, and with `--confirm` removes it from the three log tables (`rosie_audit_log`, `rosie_answer_certificate`, `rosie_feedback`). Nothing is removed unless you schedule that command. The account that runs it needs DELETE on those tables, which the account of the server does not need (`docs/INSTALL.md`, Step 3). The fourth table, `rosie_rate_limit`, holds client addresses for about two windows and is cleaned by the engine |
+| Retention? | You set it: `ROSIE_AUDIT_RETENTION_DAYS` (0, the default, keeps everything). `npm run audit-prune` reports what is older than the period, and with `--confirm` and an administrator connection removes it from the three log tables (`rosie_audit_log`, `rosie_answer_certificate`, `rosie_feedback`) and from the audit file, and records the run. Nothing is removed unless you schedule that command. The server's account cannot remove anything, by design (`docs/INSTALL.md`, Step 3), so the command refuses it. The fourth table, `rosie_rate_limit`, holds client addresses for about two windows and is cleaned by the engine |
+| Can a person's records be exported or erased? | Yes, since 1.34.0: `npm run subject -- --user <id>` with `--export` (one JSON file) or `--erase` (pseudonymise, or `--delete`), across the tables and the audit file, recorded without the person. Backups, your log platform and the model provider's records are outside its reach ([COMPLIANCE.md](COMPLIANCE.md)) |
+| Does the trail say which answers returned personal data? | Since 1.34.0 each answer's row lists the catalog columns it returned and whether one is marked `"personal": true` in the catalog, and carries the context version and the masking state in force. `npm run audit-export` writes an evidence bundle for a period with a SHA-256 manifest ([COMPLIANCE.md](COMPLIANCE.md)) |
 | What is in application logs? | Structured events with identifiers and reasons. Privilege details stay in the server log and are not returned to callers. A database error is logged by its class and code; its text, which can quote a stored value, is logged only at `LOG_LEVEL=debug` (since 1.30.0; before, at error level) |
 
+A nightly run from the host's cron, with the Docker Compose kit in `/opt/rosie`
+(`deploy/README.md`, "Compliance and other operator commands"). The URL file
+`/opt/rosie/admin-url` is owned by root with mode 600 and lies outside every folder or volume
+mounted into the containers, so the running service cannot read it. Where the engine allows it,
+the URL is a prune account rather than a full administrator: SELECT and DELETE on
+`rosie_audit_log`, `rosie_answer_certificate` and `rosie_feedback`, INSERT on `rosie_audit_log`
+for the record of the run (on PostgreSQL also USAGE on `rosie_audit_log_id_seq`), nothing else, and never the server's own account (the command
+refuses `DB_USER`).
+
 ```cron
-0 4 * * 0  docker run --rm --env-file /opt/rosie/.env <image> npm run -s retention -- --days 365 --confirm
+15 3 * * *  cd /opt/rosie && ROSIE_ADMIN_DB_URL="$(cat /opt/rosie/admin-url)" docker compose run --rm -T tools audit-prune -- --confirm --by cron >> /var/log/rosie-prune.log 2>&1
 ```
+
+The GDPR, UK GDPR, CCPA, ISO 27001 and SOC 2 mappings, the data map and the data subject
+procedures are in [COMPLIANCE.md](COMPLIANCE.md).
 
 ## Supply chain
 
@@ -378,6 +392,10 @@ holds. In 1.32.0 the claim is narrower: the database denies this account every m
 
 ## Not built, stated plainly
 
+- **No tamper evidence on the audit file.** The database copy is protected by the engine
+  account's `INSERT`-only grant; the file is plain text the server's user can write. An
+  evidence bundle (`npm run audit-export`) carries a SHA-256 manifest, which protects the
+  export, not the live trail.
 - **No certification.** There is no SOC 2 or ISO 27001 report, and no penetration test by a
   third party yet. The security suite and its results are available on request. Two
   independent reviews of 1.31.0 have been done (the 1.32.0 rows of "Corrections"); 1.32.0

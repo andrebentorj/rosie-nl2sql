@@ -301,8 +301,14 @@ stdio and HTTP cannot drift apart in handlers, instructions or capabilities.
 
 ```bash
 npm run test:mcp            # protocol, tool surface, gating and handle ownership (needs the database, no LLM)
-node test/mcp/run.js --live # adds ask → explain → export against the real DB and model
+node -r dotenv/config test/mcp/run.js --live # adds ask → explain → export against the real DB and model
 ```
+
+The suite reads the business database and never writes to the engine database (1.34.0): the
+servers it starts get `DB_ENGINE_DATABASE` set to a database that does not exist, so their
+audit rows go to a file in a temporary directory. `ROSIE_MCP_TEST_ENGINE_DATABASE` names a
+scratch engine database instead, when you want the database sink exercised.
+
 
 The suite pins the handle-signing secret on both sides and passes the environment through to
 the spawned server. That detail is load-bearing: the SDK's stdio transport forwards only a

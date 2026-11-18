@@ -348,7 +348,7 @@ Metadata the widget needs before the first question, plus the security gate stat
 {
   "name": "Sales", "fullName": "…", "description": "…", "welcomeMessage": "…",
   "suggestions": [ "…" ], "aiDisclaimer": "…", "governance": { "owner": "…" }, "theme": null,
-  "brand": null, "widgetVersion": "2026.11.17",
+  "brand": null, "widgetVersion": "2026.11.18",
   "maxInputLength": 2000,
   "securityHold": false, "securityCode": null, "securityMessage": null, "supportContact": null
 }
@@ -433,7 +433,7 @@ answers `200 { "status": "alive" }` while the process serves HTTP.
   "refusing": [],
   "audit": { "dbHealthy": true, "schemaBlockedTables": null, "pendingRetries": 0,
              "dbWriteFailures": 0, "droppedRecords": 0, "rejectedRows": 0,
-             "lastDbFailureAt": null,
+             "columnsMissing": null, "lastDbFailureAt": null,
              "fileSinkOk": true, "fileDurability": "write", "fileWriteFailures": 0,
              "fileReopened": 0, "lastFileError": null },
   "columnGrantsRequired": true,
@@ -492,7 +492,9 @@ plain words for the person asking and names no column and no setting (since 1.33
 `fileSinkOk=false` (a governance control that fails silently is not a control).
 `schemaBlockedTables` names engine tables the database refused as missing or incomplete (run
 the schema file). `rejectedRows` counts rows the database refused for what they hold; the
-file has them. `fileDurability` is `write`, or `fsync` with `ROSIE_AUDIT_FSYNC=true`.
+file has them. `columnsMissing` (1.34.0) names engine tables written without the columns a
+later version added (the values are in the file; INSTALL.md, Upgrading to 1.34.0); it does not
+make `status` degraded. `fileDurability` is `write`, or `fsync` with `ROSIE_AUDIT_FSYNC=true`.
 `fileReopened` counts the times the file was opened again after a rotation. Raw database
 error text is never included here; it lives in the server logs. `lastFileError` is the text
 of the last failure to write the audit file.

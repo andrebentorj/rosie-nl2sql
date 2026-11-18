@@ -204,10 +204,20 @@ meaning. Do NOT write "always call describe_table before every query" into your
 `system-prompt.txt`: that instruction alone costs one or two model round-trips per question.
 Richer fields improve both the summary and the `describe_table` tool output. Since 1.30.0
 `describe_table` sends a fixed list of fields and nothing else: for a column `name`, `type`,
-`nullable`, `description`, `synonyms`, `enumValues`, `measure`, `additive`, `profileNote`
-and `profileNoteConfirmed`; for the table `name`, `description`, `primaryKey`, `columns`,
+`nullable`, `description`, `synonyms`, `enumValues`, `measure`, `additive`, `profileNote`,
+`profileNoteConfirmed` and `personal` (since 1.34.0); for the table `name`, `description`, `primaryKey`, `columns`,
 `relationships` and `entity`; for a relationship `from`, `to`, `type` and `inferred`. A
 field you add to the catalog that is not in these lists does not reach the model.
+
+- **column.personal** `true` (since 1.34.0): the column holds personal data and is not
+  masked (a name, a city, a user id in a business table). It changes nothing about what can
+  be read or sent. The audit record of every answer lists the catalog columns the answer
+  returned (`columns_returned`) and says whether any of them is marked personal
+  (`personal_data`), so "which answers returned personal data, to whom" is one filter on the
+  trail (`docs/COMPLIANCE.md`). `describe_table` shows the flag.
+  Only `true` marks a column; `false` records that you looked at it and decided it is not.
+  `npm run check-context` names the columns whose names look personal and carry neither a
+  mask nor the flag. A masked column is never returned, so it does not need the flag.
 
 - **table.entity** `{ "name": "card", "key": "name" }`: says that the thing your users ask
   about is not one row of this table. A card printed in five sets is five rows and one
