@@ -374,8 +374,8 @@ established. Five sentences say what is open.
       "status": "not_applicable"
     },
     "metricDefinition": {
-      "status": "declared_not_followed",
-      "detail": "The question names a declared metric, but the query does not follow its definition. revenue (SUM(Invoice.Total)): it joins InvoiceLine, which the definition does not."
+      "status": "declared_and_followed",
+      "detail": "Uses the declared definition of revenue: SUM(Invoice.Total)."
     },
     "approval": {
       "status": "none"

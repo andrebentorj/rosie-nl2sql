@@ -1877,6 +1877,13 @@ the release starts refusing. Each note says whether the upgrade changes a grant 
    Container Apps and Google Cloud Run, with the setup wizard as a one-off job
    ([deploy/cloud/README.md](../deploy/cloud/README.md)). They are for new installations; a
    Docker Compose installation changes nothing.
+
+   **Upgrading to 1.38.1.** A patch release: no grant, no table, no setting and no behaviour
+   is changed. In Slack, a clean verdict's line now starts its sentence with a capital letter
+   ("*Cross checked.* The total was recomputed..."); the words are the same. In the
+   documentation, the contradicted example of [EVIDENCE.md](EVIDENCE.md) now shows the metric
+   line the engine really writes for that statement (`declared_and_followed`: the statement
+   follows the declared formula, and the join under it is what repeats the invoices).
 4. **Restart every replica**, then run `npm run doctor`. A widget loaded from
    `/api/assistant/widget.js` follows the backend by itself; a copied one must be copied
    again (6b).

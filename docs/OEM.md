@@ -362,4 +362,4 @@ stop the startup with a message naming the key.
 ## Licence
 
 The terms under which you may embed and resell Rosie are set in your agreement with the
-owner of Rosie. *(Placeholder: the owner sets the OEM licence terms.)*
+owner of Rosie. They are agreed per partner. To discuss them, write to [andrebentorj@gmail.com](mailto:andrebentorj@gmail.com?subject=Rosie%20OEM).
