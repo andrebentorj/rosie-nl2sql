@@ -179,11 +179,12 @@ PostgreSQL refuses a statement that names a masked column of a catalog table, in
 directly and through the table's partitions, inheritance children and parents, and the
 check is an allowlist: anything the account can read or execute beyond the catalog tables and the reviewed objects holds the context; within what the check enumerates, an object it does not recognise is held, not passed, and the paths that are not objects are named gaps. Not covered: what a reviewed object really returns,
 `LISTEN`/`NOTIFY` payloads, statement text of other sessions for a member of
-`pg_read_all_stats`, other databases on the same server, a table added to an extension with `ALTER EXTENSION ... ADD TABLE`, and any view or materialized view of that extension over it (an administrator act that cannot be told apart from what the extension ships, such as PostGIS's `spatial_ref_sys`), copies of the values elsewhere, what
+`pg_read_all_stats`, other databases on the same server, a table added to an extension with `ALTER EXTENSION ... ADD TABLE`, and any view or materialized view of that extension over it (an administrator act that cannot be told apart from what the extension ships, such as PostGIS's `spatial_ref_sys`), a foreign table added to an extension with `ALTER EXTENSION ... ADD FOREIGN TABLE` (the same act, but it reads the remote table live under its user mapping, masked columns included when the mapping's account can read them), an explicit grant on a system catalog such as `SELECT` on `pg_catalog.pg_statistic` (raw column statistics with most common values; granted to no role by default, and `pg_stats` leaves out columns the account may not read), copies of the values elsewhere, what
 unmasked columns reveal, objects created since the last check. Two independent reviews of 1.31.0 found the whole-row view, foreign
 table, `dblink` and inheritance-view paths that 1.32.0 now holds
-([Corrections](SECURITY_OVERVIEW.md#corrections)); 1.32.0 and 1.32.1 have not been reviewed
-independently.
+([Corrections](SECURITY_OVERVIEW.md#corrections)). Two independent reviews of 1.32.1, one of
+them on a live PostgreSQL 16, widened the named gaps with the extension foreign table and the
+system-catalog grant above; later versions have not been reviewed independently.
 
 A `SECURITY DEFINER` function anywhere in the database that `PUBLIC` may execute holds
 every context on that database until it is listed in `"reviewedRoutines"` or its `EXECUTE`

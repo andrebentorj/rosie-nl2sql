@@ -560,7 +560,8 @@ at; it is not a proof that no other path exists:
   What each engine enumerates, and what it deliberately skips:
   - PostgreSQL: every table, partitioned table, view, materialized view and foreign table in
     any schema except the system ones (`pg_catalog`, `information_schema`, `pg_toast*`,
-    temporary schemas) on which the account or a member role holds `SELECT` on some column
+    temporary schemas; a grant on a system catalog such as `pg_statistic` is a named gap) on
+    which the account or a member role holds `SELECT` on some column
     and `USAGE` on the schema; every routine it may execute that is `SECURITY DEFINER` (in any
     schema, extensions included), that is granted beyond `PUBLIC` (this is how PostgreSQL
     ships `pg_read_file`, `pg_read_binary_file`, `pg_ls_dir`, `pg_stat_file`, `lo_import`,
@@ -574,14 +575,17 @@ at; it is not a proof that no other path exists:
     database would hold on `spatial_ref_sys`), except a view or materialized view of an
     extension whose rule reads a relation or function outside `pg_catalog`,
     `information_schema` and that extension, which is listed (the views
-    `pg_stat_statements` ships stay skipped); sequences; and functions in trusted languages
+    `pg_stat_statements` ships stay skipped; a table or foreign table added to an extension
+    is skipped with it, a named gap); sequences; and functions in trusted languages
     (`sql`, `plpgsql`) that run with the caller's privileges. A view created
     `WITH (security_invoker = true)` is allowed: it reads with the account's own privileges,
     so a masked column behind it is refused at run time, and a definer view behind it is
     outside on its own. A materialized view never counts as security_invoker;
   - MySQL: every base table the account holds a privilege on, in any database, that is not a
     catalog table. Only `information_schema` and `performance_schema` are skipped
-    wholesale. In the `sys` schema only the table `sys_config` is skipped. The views and
+    wholesale (a grant on `performance_schema` tables is a named gap: by default the account
+    can read none of those that hold statement text or locked key values; the query account
+    must not be given `SELECT` on them, and the check does not detect it). In the `sys` schema only the table `sys_config` is skipped. The views and
     routines MySQL ships there run as `SQL SECURITY INVOKER` and are allowed like any invoker
     object; any `SQL SECURITY DEFINER` view or routine in `sys` holds the context, whatever its
     definer. Anything the account can read in `mysql` is outside; every definer view outside the catalog, even one that
@@ -597,7 +601,8 @@ at; it is not a proof that no other path exists:
     tables, Service Broker queues, and any type SQL Server adds later), except the types that
     cannot return data: constraints and defaults, rules, triggers, internal and system
     tables, table types, plan guides and sequences; every linked server with data access (the
-    login cannot see `sys.linked_logins`, so a mapping cannot be ruled out); every other user
+    login cannot see `sys.linked_logins`, so a mapping cannot be ruled out; one with data
+    access off and only `RPC OUT` on is not listed, a named gap); every other user
     database the login can open (`master`, `tempdb`, `model` and `msdb` skipped). Only the
     `sys` and `INFORMATION_SCHEMA` schemas are left out. Objects flagged as shipped by
     Microsoft (`is_ms_shipped`, which `sp_MS_marksystemobject` sets on any object) are not
@@ -809,6 +814,12 @@ This is what the evidence supports today:
   statement text of other sessions in `pg_stat_activity` and `pg_stat_statements` for a
   member of `pg_read_all_stats`, other databases on the same server (`CONNECT` goes to
   `PUBLIC` by default, and their catalogs are not visible from here), a table added to an extension with `ALTER EXTENSION ... ADD TABLE`, and any view or materialized view of that extension over it (an administrator act that cannot be told apart from what the extension ships, such as PostGIS's `spatial_ref_sys`),
+  a foreign table added to an extension with `ALTER EXTENSION ... ADD FOREIGN TABLE` (the
+  same administrator act, but not a copy: it reads the remote table live under its user
+  mapping, masked columns included when the mapping's account can read them), an explicit
+  grant on a system catalog such as `SELECT` on `pg_catalog.pg_statistic` (raw column
+  statistics, which hold most common values; PostgreSQL grants it to no role by default,
+  and the `pg_stats` view leaves out the columns the account may not read),
   copies of the values elsewhere, what unmasked columns reveal, objects created since the
   last check.
 - **MySQL.** The database refuses a statement that reads a masked column by name; the check
@@ -821,8 +832,13 @@ This is what the evidence supports today:
   Since 1.32.0 a table or definer view outside the catalog, in any database, holds the
   context until it is reviewed or taken away, even one that reads only unmasked columns.
   Not covered: `CHECKSUM TABLE`, which runs for a column-granted account and covers the
-  masked columns (a weak equality test), statement text of other sessions in
-  `performance_schema.events_statements_*` when the account may read it, and a catalog table
+  masked columns (a weak equality test), any `performance_schema` table the account has been
+  granted (none of these by default): statement text of other sessions in
+  `events_statements_*`, and in `data_locks` the key values of rows other sessions hold
+  locked (an index on a masked column puts that column's values there, the primary key
+  appended). The query account must not hold `SELECT` on `performance_schema` tables (give
+  monitoring its own account); `npm run grants -- --verify` does not detect such a grant
+  today. And a catalog table
   that is a `FEDERATED` table (trusted as a table; one outside the catalog is held). On MySQL
   the database does not refuse whatever Rosie's own checks miss: there it is the two layers
   together. The demo was tested on MySQL 8.4; one independent review ran 8.0.
@@ -836,21 +852,29 @@ This is what the evidence supports today:
   away. Not covered: statement text of other sessions in `sys.dm_exec_*` for a login with
   `VIEW SERVER STATE`, and the history table of a temporal catalog table read through
   `FOR SYSTEM_TIME` (that is the catalog table's own grant; a history table outside the
-  catalog is held), and an object an administrator creates in `dbo` with one of the exact diagram names and types and flags as shipped (`sp_MS_marksystemobject`), and `VIEW CHANGE TRACKING` on a change-tracked table, with which `CHANGETABLE` returns the primary key values of its changed rows (a permission, not an object the allowlist lists; untested). It is the weakest of the three claims. Common Criteria mode
+  catalog is held), and an object an administrator creates in `dbo` with one of the exact diagram names and types and flags as shipped (`sp_MS_marksystemobject`), and `VIEW CHANGE TRACKING` on a change-tracked table, with which `CHANGETABLE` returns the primary key values of its changed rows (a permission, not an object the allowlist lists; untested), and a linked server with data access off and `RPC OUT` on (`EXEC ... AT` runs a statement there under its login mapping; only linked servers with data access are listed; untested). It is the weakest of the three claims. Common Criteria mode
   and application roles are untested. No independent reviewer has reproduced
   the SQL Server results; they were established on a live SQL Server 2022 CU23.
 
 Two independent reviews of 1.31.0 found readable paths that this claim, as 1.31.0 worded it,
 did not cover; 1.32.0 closes them and narrows the claim (the 1.32.0 rows of
-[Corrections](SECURITY_OVERVIEW.md#corrections)). 1.32.0 and 1.32.1 have not been reviewed
-independently.
+[Corrections](SECURITY_OVERVIEW.md#corrections)). Two independent reviews of 1.32.1 (one ran
+PostgreSQL 16 and MySQL 8.0 live, one worked from the code with simulated databases; neither
+ran SQL Server) widened the named gaps above: a foreign table added to an extension, grants
+on `performance_schema` tables, explicit grants on PostgreSQL system catalogs, and SQL Server
+linked servers with only `RPC OUT`. Each of these needs an administrator to grant or build it
+on purpose. Later versions have not been reviewed independently.
 
 On every engine the check does not cover: what a reviewed object really exposes (the
 markers are your statement, not Rosie's), paths that are not objects it enumerates (the
 named gaps above), objects in a schema or database the account
 cannot see (it cannot use them either), anything created between two checks (the interval is
 the detection lag), copies of a masked value in another column or table, and what the
-unmasked columns reveal. A context with no masked columns is `no masked columns` and skips
+unmasked columns reveal. With OEM tenancy and one database or schema per tenant
+([OEM.md](OEM.md), model B), the check and the gate cover the installation's own database
+only: a tenant's request is admitted on the installation's passing result, so each tenant
+database needs the same grants as the installation's, and the check does not verify them.
+A context with no masked columns is `no masked columns` and skips
 the view and routine checks: nothing in it is masked, so nothing is checked. Masked column
 names are Rosie's job, not the database's: the grant stops values, and Rosie's own
 description of the schema leaves the names out.

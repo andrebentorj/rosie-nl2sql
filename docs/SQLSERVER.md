@@ -217,7 +217,7 @@ on, more than 200 objects, a procedure or function held as above, or a `PIVOT` p
 could not be written. Not covered: statement text of other sessions in `sys.dm_exec_*` for a
 login with `VIEW SERVER STATE`, and the history of a temporal catalog table read through
 `FOR SYSTEM_TIME` (the table's own grant; a history table outside the catalog is held), and
-an object an administrator creates in `dbo` with one of the exact diagram names and types and flags as shipped (`sp_MS_marksystemobject`), and `VIEW CHANGE TRACKING` on a change-tracked table, with which `CHANGETABLE` returns the primary key values of its changed rows (a permission, not an object the allowlist lists; untested). Objects flagged as shipped by Microsoft are not trusted: only the
+an object an administrator creates in `dbo` with one of the exact diagram names and types and flags as shipped (`sp_MS_marksystemobject`), and `VIEW CHANGE TRACKING` on a change-tracked table, with which `CHANGETABLE` returns the primary key values of its changed rows (a permission, not an object the allowlist lists; untested), and a linked server with data access off and `RPC OUT` on (`EXEC ... AT` runs a statement there under its login mapping; only linked servers with data access are listed; untested). Objects flagged as shipped by Microsoft are not trusted: only the
 database-diagram objects SQL Server creates in `dbo` are skipped when flagged, each by its
 exact name and type (the table `sysdiagrams`, the scalar function `fn_diagramobjects`, and the
 procedures `sp_alterdiagram`, `sp_creatediagram`, `sp_dropdiagram`,

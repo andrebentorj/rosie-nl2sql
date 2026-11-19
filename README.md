@@ -428,7 +428,8 @@ of. In strict mode the database grant is the layer that does not depend on Rosie
 express mode there is no such layer. Two independent reviews of 1.31.0 found readable paths
 the strict check did not cover (whole-row views and foreign tables on PostgreSQL, nested
 views on MySQL, procedures on SQL Server) and lifecycle gaps in the gate; 1.32.0 closes them
-and narrows the claim. 1.32.0 and 1.32.1 have not been reviewed independently. The findings are in
+and narrows the claim. Two independent reviews of 1.32.1 widened the named gaps (each an
+administrator act on purpose); later versions have not been reviewed independently. The findings are in
 [Corrections](docs/SECURITY_OVERVIEW.md#corrections). If you ran 1.29.2 or
 earlier with masked columns, read the
 [operator advisory](docs/SECURITY_OVERVIEW.md#advisory-masked-columns-in-1292-and-earlier).

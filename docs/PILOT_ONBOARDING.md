@@ -55,7 +55,8 @@ second one. A definer stored function the account can execute is not stopped by 
 database either; the validator refuses the call (MySQL functions are allowlisted since
 1.31.0) and the check reports the routine. Give the account no `EXECUTE` on routines. On SQL Server, column grants are not enough, and the step ends in a different
 design ([SQL Server](#sql-server) below). Two independent reviews of 1.31.0 found paths its
-check did not cover; 1.32.0 holds them, and 1.32.0 and 1.32.1 have not been reviewed independently
+check did not cover; 1.32.0 holds them. Two independent reviews of 1.32.1 widened the named
+gaps, each an administrator act on purpose; later versions have not been reviewed independently
 ([Corrections](SECURITY_OVERVIEW.md#corrections)).
 
 ## What the customer provides
