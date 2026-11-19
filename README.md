@@ -276,7 +276,7 @@ Your numbers will differ, and the same commands measure them.
 Rosie is commercial software. It is delivered as a private Docker image that you run on
 your own infrastructure; this repository holds the documentation, not the source.
 
-The way in is a **six-week pilot**: one database, a question bank built from what your
+The way in is a **two-week pilot**: one database, a question bank built from what your
 teams actually ask, and a report of how many Rosie answered correctly and what the
 certificate caught. Write to [andrebentorj@gmail.com](mailto:andrebentorj@gmail.com?subject=Rosie%20pilot)
 or see the [site](https://andrebentorj.github.io/rosie-nl2sql/).
