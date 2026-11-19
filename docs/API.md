@@ -367,7 +367,7 @@ Metadata the widget needs before the first question, plus the security gate stat
 {
   "name": "Sales", "fullName": "…", "description": "…", "welcomeMessage": "…",
   "suggestions": [ "…" ], "aiDisclaimer": "…", "governance": { "owner": "…" }, "theme": null,
-  "brand": null, "widgetVersion": "2026.11.18.2",
+  "brand": null, "widgetVersion": "2026.11.18.3",
   "maxInputLength": 2000,
   "securityHold": false, "securityCode": null, "securityMessage": null, "supportContact": null
 }
@@ -375,7 +375,10 @@ Metadata the widget needs before the first question, plus the security gate stat
 
 `maxInputLength` is the longest question the server accepts (`AI_MAX_INPUT_LENGTH`); the
 widget stops the typing there. `brand` is the validated white-label block of `project.json`
-(`assistantName`, `tagline`, `hideMascot`) or `null`. `widgetVersion` is the version of the
+(`assistantName`, `tagline`, `hideMascot`) or `null`. Since 1.38.0 it may also hold `iconUrl`,
+the partner's icon as `brand/icon/<digest>.<png|svg|webp>` relative to the API, served by
+`GET /brand/icon/<file>` with a one-year cache; under tenancy a request with a verified identity
+gets its tenant's `assistantName` and `iconUrl` ([OEM.md](OEM.md)). `widgetVersion` is the version of the
 bundle this backend serves at `/widget.js`; a copied widget compares itself with it.
 Since 1.33.0 `securityMessage` and `supportContact` are written for the person asking:
 "Rosie is paused while a security setting is fixed. Your question was not run." and "Please

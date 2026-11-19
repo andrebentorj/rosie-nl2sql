@@ -1855,6 +1855,28 @@ the release starts refusing. Each note says whether the upgrade changes a grant 
    `ROSIE_TEAMS_*` setting without its switch is named in a startup warning, and a
    `scheduled-answers.json` channel of an unknown type is now reported as not "email",
    "webhook", "slack" or "teams".
+
+   **Upgrading to 1.38.0.** No grant and no default is changed. Things you may notice:
+
+   *"Powered by Rosie".* An installation whose `project.json` sets `brand.assistantName` to a
+   name other than Rosie, or sets the new `brand.icon`, now shows a discreet "Powered by Rosie"
+   at the end of the widget's disclaimer line and in the chat page footer. It cannot be turned
+   off. Colours, layout and the Answer Certificate do not change, and an installation without a
+   brand looks exactly as before. A copied widget must be copied again to show the icon (6b).
+
+   *Tenants (OEM).* New and off by default: `ROSIE_TENANT_CLAIM` serves several customers'
+   tenants from one installation, each kept to its own rows (a tenant column with row policies)
+   or its own database, with tenant quotas and `npm run usage` for billing
+   ([OEM.md](OEM.md)). Without it nothing changes. The schema files now give
+   `rosie_audit_log` a `tenant_id` column; engine tables created before 1.38.0 need it only when
+   you turn tenancy on (the `ALTER` for each engine is in [OEM.md](OEM.md#audit-and-usage)).
+   Until then a tenant's audit rows are written without it and the log says
+   `audit_tenant_column_missing` once.
+
+   *In your own cloud account.* `deploy/cloud/` has templates for AWS ECS Fargate, Azure
+   Container Apps and Google Cloud Run, with the setup wizard as a one-off job
+   ([deploy/cloud/README.md](../deploy/cloud/README.md)). They are for new installations; a
+   Docker Compose installation changes nothing.
 4. **Restart every replica**, then run `npm run doctor`. A widget loaded from
    `/api/assistant/widget.js` follows the backend by itself; a copied one must be copied
    again (6b).

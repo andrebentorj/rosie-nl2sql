@@ -113,6 +113,9 @@ an answer and has no such line.
 - The verdict is never on the character alone: it is always written on the card.
 - `prefers-reduced-motion`: no float, no nod, no blink, still dots, loops paused. Every state
   is a shape and a badge, so it is still told apart.
+- A partner's icon (`brand.icon`, 1.38.0, [OEM.md](OEM.md)) takes her place in the launcher, the
+  header and the results screen, and a branded widget (its own name or icon) says "Powered by
+  Rosie" at the end of the disclaimer line. Nothing turns that line off.
 - `brand.hideMascot` replaces her with a small neutral launcher in the theme colour, in the
   header and on the results screen as well.
 

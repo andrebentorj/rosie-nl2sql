@@ -3,6 +3,9 @@
 From nothing to a running Rosie on one server, without installing Node.js. Everything runs
 from the Rosie image: a check before you start, the setup wizard, and the service.
 
+In a cloud account instead of a server (AWS ECS, Azure Container Apps, Google Cloud Run):
+[cloud/README.md](cloud/README.md).
+
 You need:
 
 - **Docker Engine with Docker Compose 2.24 or newer** (`docker compose version`). Docker

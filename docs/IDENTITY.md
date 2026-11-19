@@ -70,7 +70,7 @@ Microsoft, differs per application; at Microsoft the address is the tenant's sig
 changes it when set (string values only); `groups` and `roles` are kept whole only when a row
 policy or `ROSIE_JWT_CLAIM_MAP` reads them; and the claims kept are `sub`, `iss`, `email`, `email_verified`, `name`, `preferred_username`,
 `upn`, `oid`, `tid`, `hd`, `groups`, `roles`, plus every claim the map and the user and name
-settings name. `ROSIE_JWT_ISSUER` is not needed for the page. Details in
+settings name, and `ROSIE_TENANT_CLAIM` when set ([OEM.md](OEM.md)). `ROSIE_JWT_ISSUER` is not needed for the page. Details in
 [CHAT_PAGE.md](CHAT_PAGE.md).
 
 ## Administrators

@@ -86,7 +86,7 @@ printed.
 | `UNION`, system catalogs, server functions (`USER()`, `@@version`) | The validator's fixed rules ([SECURITY_OVERVIEW.md](SECURITY_OVERVIEW.md)) | `UNION ALL` inside a derived table is accepted (`AI_UNION_ALL`) |
 | Longer than 8,000 characters | The limit of `/certify` and `certify_sql` | Generated SQL can exceed it (Power BI especially); certify the part behind one figure |
 | Template syntax (`{{var}}`, `[[...]]`, `{% %}`, `${...}`) | Not SQL until the tool fills it in | Copy the SQL the tool actually ran, with the values in place |
-| A dialect the database does not speak | The statement runs on the database Rosie is connected to (MySQL or MariaDB, PostgreSQL, SQL Server) | Certify against the source the dashboard reads; a warehouse copy in another engine is not supported |
+| A dialect the database does not speak | The statement runs on the database Rosie is connected to (MySQL, PostgreSQL, SQL Server; MariaDB is not supported) | Certify against the source the dashboard reads; a warehouse copy in another engine is not supported |
 
 Results are capped at 500 rows (`truncated` says so). The checks run their own probes on the
 data and do not depend on the rows returned.

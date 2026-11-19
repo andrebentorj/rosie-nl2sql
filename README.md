@@ -347,6 +347,7 @@ directory. The contract is in [contexts/example/README.md](docs/CONTEXT_DIRECTOR
 | I want to | Read |
 |---|---|
 | Install it | [docs/INSTALL.md](docs/INSTALL.md) |
+| Run it in my AWS, Azure or Google Cloud account | [deploy/cloud/README.md](deploy/cloud/README.md) |
 | Set up the read-only account's grants with a customer's DBA | [docs/PILOT_ONBOARDING.md](docs/PILOT_ONBOARDING.md) |
 | What the widget shows, and what the character does | [docs/WIDGET.md](docs/WIDGET.md) |
 | The certificate as a list of evidence, for integrators and agents | [docs/EVIDENCE.md](docs/EVIDENCE.md) |

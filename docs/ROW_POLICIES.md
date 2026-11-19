@@ -31,6 +31,11 @@ column, or uses no claim at all stops the server at startup (since 1.30.0; befor
 policy on an unknown table did, and the other errors stopped the first question on that
 table).
 
+For a product that serves several customer organisations from one database, declare the
+tenant column in `project.json` (`"tenancy": { "column", "claim" }`, since 1.38.0): every table
+that has the column must then carry a policy requiring it to equal the claim, or the server
+does not start. See [OEM.md](OEM.md).
+
 ## How it is enforced
 
 Immediately before a statement runs, every reference to a restricted table is replaced by a
@@ -51,7 +56,10 @@ GROUP BY c.name
 The filtered read names the table's unmasked catalog columns (quoted as the engine needs).
 
 This happens at every depth: joins, self-joins, subqueries in any clause, derived tables and
-CTE bodies. There is no syntax inside a SELECT that reaches the table behind a derived table,
+CTE bodies, and since 1.38.0 tables and joins written in parentheses on MySQL
+(`FROM ((orders))`, `FROM (orders JOIN customers ON ...)`), which earlier versions ran
+unfiltered (see the 1.38.0 row of [SECURITY_OVERVIEW.md](SECURITY_OVERVIEW.md), "Corrections").
+There is no syntax inside a SELECT that reaches the table behind a derived table,
 so a query that asks for another tenant (`WHERE tenant_id = 'globex'`, `OR 1 = 1`) simply
 runs against the caller's rows and finds nothing else.
 
@@ -77,7 +85,10 @@ Nothing runs, and the model is told not to retry, when:
   most 128 characters, starting with a letter or a digit, no `--`). Tenant ids, UUIDs, slugs
   and e-mail addresses pass; quotes, backslashes, semicolons and control characters do not;
 - a CTE takes the name of a restricted table;
-- the statement cannot be parsed for rewriting.
+- the statement cannot be parsed for rewriting;
+- (since 1.38.0) the statement names a restricted table in a place the rewrite does not reach:
+  Rosie counts every reference to a restricted table, and runs the statement only when each one
+  comes out inside its filtered read, read back from the statement as the database receives it.
 
 Numbers are written as numbers and booleans as booleans. A list is accepted only inside
 `IN (...)`, with at most 200 elements.
